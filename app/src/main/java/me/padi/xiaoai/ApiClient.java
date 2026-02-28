@@ -22,16 +22,12 @@ public class ApiClient {
 
                 @Override
                 public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
-                    String domain = url.topPrivateDomain();
-                    if (domain == null) domain = url.host();
-                    cookieStore.put(domain, cookies);
+                    cookieStore.put(url.host(), cookies);
                 }
 
                 @Override
                 public List<Cookie> loadForRequest(HttpUrl url) {
-                    String domain = url.topPrivateDomain();
-                    if (domain == null) domain = url.host();
-                    List<Cookie> cookies = cookieStore.get(domain);
+                    List<Cookie> cookies = cookieStore.get(url.host());
                     return cookies != null ? cookies : new ArrayList<>();
                 }
             })
