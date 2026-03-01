@@ -596,7 +596,7 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                             put("buttonTextColor", "#0D84FF")
                                             put("buttonColor", "#d1e8ff")
                                             put("backgroundColor", "#e7f3ff")
-                                            put("script", "")
+                                            put("script", "(async function() {alert('没适配');})()")
                                         }
 
                                         putExtra("EXTRA_PARAMS", params.toString())
