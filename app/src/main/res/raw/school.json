@@ -3,18 +3,6 @@
     "customConf": {
       "androidZiyanType": ""
     },
-    "importType": "ziyan",
-    "minVersion": 0,
-    "mode": "",
-    "name": "江西航空职业技术学院",
-    "sortKey": "★",
-    "type": "javtc",
-    "url": "https://jw.jhzyedu.cn/xtgl/login_slogin.html?"
-  },
-  {
-    "customConf": {
-      "androidZiyanType": ""
-    },
     "importType": "wakeup",
     "minVersion": 0,
     "mode": "",

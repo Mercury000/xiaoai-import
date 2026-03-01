@@ -1,7 +1,10 @@
 package me.padi.xiaoai.screen
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -30,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
@@ -48,6 +52,7 @@ import me.padi.xiaoai.ParseResult
 import me.padi.xiaoai.R
 import me.padi.xiaoai.hook.MainHook.prefs
 import org.json.JSONArray
+import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.sacz.xphelper.ext.toClass
 import top.yukonga.miuix.kmp.basic.Button
@@ -161,6 +166,8 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
     val coroutineScope = rememberCoroutineScope()
 
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             SmallTopAppBar(
@@ -181,7 +188,7 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                 val dismiss = LocalWindowDialogState.current
                 TextButton(
                     text = "我知道了", onClick = {
-                        dismiss?.invoke() ?: run { showErrorDialog.value = false }
+                        dismiss.invoke()
                     }, modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -194,7 +201,7 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                 val dismiss = LocalWindowDialogState.current
                 TextButton(
                     text = "我知道了", onClick = {
-                        dismiss?.invoke() ?: run { showResultDialog.value = false }
+                        dismiss.invoke()
                     }, modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -239,16 +246,17 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                     }
 
                                     override fun shouldInterceptRequest(
-                                        view: WebView?,
-                                        request: WebResourceRequest?
+                                        view: WebView?, request: WebResourceRequest?
                                     ): WebResourceResponse? {
                                         request?.requestHeaders?.let { headers ->
                                             if (headers.containsKey("X-Requested-With")) {
                                                 val newHeaders = headers.toMutableMap()
                                                 newHeaders.remove("X-Requested-With")
                                                 newHeaders["sec-ch-ua"] = ApiClient.SEC_CH_UA
-                                                newHeaders["sec-ch-ua-mobile"] = ApiClient.SEC_CH_UA_MOBILE
-                                                newHeaders["sec-ch-ua-platform"] = ApiClient.SEC_CH_UA_PLATFORM
+                                                newHeaders["sec-ch-ua-mobile"] =
+                                                    ApiClient.SEC_CH_UA_MOBILE
+                                                newHeaders["sec-ch-ua-platform"] =
+                                                    ApiClient.SEC_CH_UA_PLATFORM
                                             }
                                         }
                                         return super.shouldInterceptRequest(view, request)
@@ -567,9 +575,41 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                             title = school.name, onClick = {
                                 currentSchoolName = school.name
                                 url = school.url
-                                showBottomSheet.value = true
-                                importState = ImportState.Idle // 重置状态
-                                webViewLoading = true
+                                val importType = (context as Activity).intent.getStringExtra("type")
+                                YLog.debug(importType)
+                                if (importType == "jiaowu") {
+                                    val intent = Intent().apply {
+                                        component = ComponentName(
+                                            "com.xiaomi.aischedule",
+                                            "com.xiaomi.aischedule.activity.ScheduleEducationalImportActivity"
+                                        )
+                                        val params = JSONObject().apply {
+                                            put("url", school.url)
+                                            put("title", "导入课程表")
+                                            put("titleColor", "#0D84FF")
+                                            put(
+                                                "text",
+                                                "请先在浏览器登录教务系统，定位到个人课程表页面后，点击一键导入"
+                                            )
+                                            put("textColor", "#0D84FF")
+                                            put("buttonText", "一键导入")
+                                            put("buttonTextColor", "#0D84FF")
+                                            put("buttonColor", "#d1e8ff")
+                                            put("backgroundColor", "#e7f3ff")
+                                            put("script", "")
+                                        }
+
+                                        putExtra("EXTRA_PARAMS", params.toString())
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                                    }
+                                    context.startActivity(intent)
+
+                                } else {
+                                    showBottomSheet.value = true
+                                    importState = ImportState.Idle
+                                    webViewLoading = true
+                                }
                             })
                     }
                 }

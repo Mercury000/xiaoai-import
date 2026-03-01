@@ -6,8 +6,11 @@ import android.webkit.JavascriptInterface
 import android.widget.Toast
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
+import com.kongzue.dialogx.dialogs.BottomMenu
 import me.padi.xiaoai.screen.ModuleScreen
+import me.padi.xiaoai.screen.SchoolScreen
 import top.sacz.xphelper.ext.toClass
+
 
 class WebAppInterface(private val context: Context) {
     @JavascriptInterface
@@ -23,11 +26,39 @@ class WebAppInterface(private val context: Context) {
             }.invoke()?.asResolver()?.firstMethod {
                 name = "isLogin"
             }?.invoke<Boolean>() == true) {
-            val intent = Intent(context, ModuleScreen::class.java)
-            intent.putExtra(
-                "proxy_target_activity", "com.xiaomi.aischedule.activity.DeleteAccountActivity"
-            )
-            context.startActivity(intent)
+
+
+            BottomMenu.show("指定学校导入", "AI解析导入", "教务系统导入").setTitle("提示")
+                .setMessage("选择一个导入方式").setOnMenuItemClickListener { dialog, text, index ->
+                    when (text) {
+                        "AI解析导入" -> {
+                            val intent = Intent(context, ModuleScreen::class.java)
+                            intent.putExtra(
+                                "proxy_target_activity",
+                                "com.xiaomi.aischedule.activity.DeleteAccountActivity"
+                            )
+                            context.startActivity(intent)
+                        }
+
+                        "教务系统导入" -> {
+                            val intent = Intent(context, SchoolScreen::class.java)
+                            intent.putExtra("type", "jiaowu")
+                            intent.putExtra(
+                                "proxy_target_activity",
+                                "com.xiaomi.aischedule.activity.DeleteAccountActivity"
+                            )
+                            context.startActivity(intent)
+                        }
+
+                        "指定学校导入" -> {
+
+                        }
+                    }
+                    true
+                }.setCancelButton("取消") { baseDialog, v ->
+                    false
+                }
+
 
         } else {
             Toast.makeText(
@@ -38,7 +69,6 @@ class WebAppInterface(private val context: Context) {
 
     @JavascriptInterface
     fun processData(input: String): String {
-        // 处理从 JavaScript 传来的数据并返回结果
         return "处理结果: $input"
     }
 

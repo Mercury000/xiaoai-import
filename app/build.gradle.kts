@@ -105,4 +105,13 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
 
+    val dialogXVersion = "0.0.50.beta38"
+    //引入DialogX主体
+    implementation("com.github.suzhelan.DialogX:DialogX:$dialogXVersion")
+    //非必须 DialogX官方提供的主题样式
+    implementation("com.github.suzhelan.DialogX:DialogXKongzueStyle:$dialogXVersion")
+    implementation ("com.github.suzhelan.DialogX:DialogXMIUIStyle:$dialogXVersion")
+    implementation("com.github.suzhelan.DialogX:DialogXIOSStyle:$dialogXVersion")
+    implementation("com.github.suzhelan.DialogX:DialogXMaterialYou:$dialogXVersion")
+
 }
