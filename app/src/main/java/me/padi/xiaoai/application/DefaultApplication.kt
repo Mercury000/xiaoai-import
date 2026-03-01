@@ -1,5 +1,6 @@
 package me.padi.xiaoai.application
 
+import android.webkit.CookieManager
 import androidx.appcompat.app.AppCompatDelegate
 import com.highcapable.yukihookapi.hook.xposed.application.ModuleApplication
 
@@ -12,6 +13,7 @@ class DefaultApplication : ModuleApplication() {
          * Follow system night mode
          */
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
-        // Your code here.
+        // Enable cookies globally
+        CookieManager.getInstance().setAcceptCookie(true)
     }
 }

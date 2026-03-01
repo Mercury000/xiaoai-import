@@ -3,6 +3,9 @@ package me.padi.xiaoai.screen
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.compose.setContent
@@ -232,6 +235,23 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                     override fun onPageFinished(view: WebView, url: String?) {
                                         super.onPageFinished(view, url)
                                         webViewLoading = false
+                                        CookieManager.getInstance().flush() // 强制同步 Cookie
+                                    }
+
+                                    override fun shouldInterceptRequest(
+                                        view: WebView?,
+                                        request: WebResourceRequest?
+                                    ): WebResourceResponse? {
+                                        request?.requestHeaders?.let { headers ->
+                                            if (headers.containsKey("X-Requested-With")) {
+                                                val newHeaders = headers.toMutableMap()
+                                                newHeaders.remove("X-Requested-With")
+                                                newHeaders["sec-ch-ua"] = ApiClient.SEC_CH_UA
+                                                newHeaders["sec-ch-ua-mobile"] = ApiClient.SEC_CH_UA_MOBILE
+                                                newHeaders["sec-ch-ua-platform"] = ApiClient.SEC_CH_UA_PLATFORM
+                                            }
+                                        }
+                                        return super.shouldInterceptRequest(view, request)
                                     }
                                 }
                             },
@@ -239,8 +259,11 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                 webViewRef = webView
                                 webView.settings.apply {
                                     javaScriptEnabled = true
-                                    userAgentString =
-                                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                    userAgentString = ApiClient.PUBLIC_UA
+                                }
+                                CookieManager.getInstance().apply {
+                                    setAcceptCookie(true)
+                                    setAcceptThirdPartyCookies(webView, true)
                                 }
 
                                 // 其他设置
@@ -248,7 +271,10 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                     useWideViewPort = true
                                     loadWithOverviewMode = true
                                     domStorageEnabled = true
-                                    cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+                                    databaseEnabled = true
+                                    javaScriptCanOpenWindowsAutomatically = true
+                                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    cacheMode = WebSettings.LOAD_DEFAULT
                                 }
                             },
                             onDispose = {

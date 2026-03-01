@@ -8,11 +8,29 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class ApiClient {
+    public static final String PUBLIC_UA = "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36";
+    public static final String SEC_CH_UA = "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"146\", \"Chromium\";v=\"146\"";
+    public static final String SEC_CH_UA_MOBILE = "?1";
+    public static final String SEC_CH_UA_PLATFORM = "\"Android\"";
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(300, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .cookieJar(new CookieJar() {
+                private final HashMap<String, List<Cookie>> cookieStore = new HashMap<>();
+
+                @Override
+                public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
+                    cookieStore.put(url.host(), cookies);
+                }
+
+                @Override
+                public List<Cookie> loadForRequest(HttpUrl url) {
+                    List<Cookie> cookies = cookieStore.get(url.host());
+                    return cookies != null ? cookies : new ArrayList<>();
+                }
+            })
             .build();
 
     private static final MediaType JSON_TYPE = MediaType.parse("application/json; charset=utf-8");
