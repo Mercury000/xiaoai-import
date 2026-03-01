@@ -36,7 +36,7 @@ class WebAppInterface(private val context: Context) {
             }?.invoke<Boolean>() == true) {
 
 
-            BottomMenu.show("指定学校导入", "AI解析导入", "教务系统导入").setTitle("提示")
+            BottomMenu.show("指定学校导入", "AI解析导入").setTitle("提示")
                 .setMessage("选择一个导入方式").setOnMenuItemClickListener { dialog, text, index ->
                     when (text) {
                         "AI解析导入" -> {

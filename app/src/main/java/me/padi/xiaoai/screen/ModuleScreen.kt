@@ -175,6 +175,23 @@ class ModuleScreen : BaseActivity() {
                                         uriHandler.openUri("https://www.coolapk.com/u/3336736")
                                     })
 
+                                Spacer(Modifier.height(8.dp))
+
+
+                                SuperArrow(
+                                    title = "特别鸣谢", summary = "颜致恒plus", onClick = {
+                                        uriHandler.openUri("https://space.bilibili.com/516163236")
+                                    })
+
+                                Spacer(Modifier.height(8.dp))
+
+
+                                SuperArrow(
+                                    title = "交流群", summary = "适配你的学校", onClick = {
+                                        uriHandler.openUri("https://qm.qq.com/q/93j8jE1vWw")
+                                    })
+
+
                             }
                         }
                     }
