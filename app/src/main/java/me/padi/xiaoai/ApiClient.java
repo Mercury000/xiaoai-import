@@ -1,7 +1,6 @@
 package me.padi.xiaoai;
 
 import android.util.Base64;
-
 import okhttp3.*;
 import org.json.*;
 import java.util.*;
@@ -261,29 +260,34 @@ public class ApiClient {
         return parseResult;
     }
 
-    /** 上传单条课程到小爱课表 */
-    public static String uploadCourse(Course course, long ctId, String appId,
-                                      String serviceToken, String deviceId) throws Exception {
-        JSONObject courseObj = new JSONObject()
-                .put("name", course.name)
-                .put("position", course.position)
-                .put("teacher", course.teacher)
-                .put("extend", "")
-                .put("weeks", course.weeks)
-                .put("day", course.day)
-                .put("style", course.style != null ? course.style : COLOR_PRESETS[0]) // Use assigned color
-                .put("sections", course.sections);
+    /** 批量上传课程到小爱课表（POST /course-multi-auth/courseInfos） */
+    public static void uploadCoursesAll(List<Course> courses, long ctId, String appId,
+                                        String serviceToken, String deviceId) throws Exception {
+        JSONArray courseArray = new JSONArray();
+        for (Course course : courses) {
+            JSONObject courseObj = new JSONObject()
+                    .put("name", course.name)
+                    .put("position", course.position)
+                    .put("teacher", course.teacher)
+                    .put("day", course.day)
+                    .put("sections", course.sections)
+                    .put("style", course.style != null ? course.style : COLOR_PRESETS[0])
+                    .put("weeks", course.weeks);
+            courseArray.put(courseObj);
+        }
 
         JSONObject body = new JSONObject()
                 .put("ctId", ctId)
-                .put("course", courseObj)
+                .put("courses", courseArray)
                 .put("sourceName", "course-app-aiSchedule");
 
+        String requestId = UUID.randomUUID().toString().replace("-", "").toUpperCase();
         Request req = new Request.Builder()
-                .url("https://i.ai.mi.com/course-multi-auth/courseInfo")
+                .url("https://i.ai.mi.com/course-multi-auth/courseInfos")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
+                .header("RequestId", requestId)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36 AgentWeb/4.1.3")
                 .header("Origin", "https://i.ai.mi.com")
                 .header("X-Requested-With", "com.xiaomi.aischedule")
@@ -295,18 +299,16 @@ public class ApiClient {
             String raw = resp.body() != null ? resp.body().string() : "";
             if (!resp.isSuccessful()) throw new Exception(resp.code() + ": " + raw);
             JSONObject json = new JSONObject(raw);
-            
+
             if (json.has("status") && json.optInt("status") == -1) {
-                throw new Exception("创建失败: status=-1 (可能单节课程名字、地点字数过长，或参数不合法)");
+                throw new Exception("批量创建失败: status=-1 (可能课程参数不合法)");
             }
-            
+
             int code = json.optInt("code", 0);
             if (code != 0 && code != 200) {
                 String desc = json.optString("desc", json.optString("msg", "未知错误"));
                 throw new Exception(desc);
             }
-            
-            return "已导入";
         }
     }
 

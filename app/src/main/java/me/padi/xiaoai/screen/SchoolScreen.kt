@@ -462,25 +462,21 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                                                 var errorMessages =
                                                                     mutableListOf<String>()
 
-                                                                result.courses.forEachIndexed { index, course ->
-                                                                    try {
-                                                                        val uploadResult =
-                                                                            withContext(Dispatchers.IO) {
-                                                                                ApiClient.uploadCourse(
-                                                                                    course,
-                                                                                    ctid,
-                                                                                    appId,
-                                                                                    serviceToken,
-                                                                                    deviceId
-                                                                                )
-                                                                            }
-                                                                        YLog.debug("Upload result for course ${index + 1}: $uploadResult")
-                                                                        successCount++
-                                                                    } catch (e: Exception) {
-                                                                        YLog.error("Upload failed for course ${index + 1}: ${e.message}")
-                                                                        failCount++
-                                                                        errorMessages.add("课程${index + 1}: ${e.message}")
+                                                                try {
+                                                                    withContext(Dispatchers.IO) {
+                                                                        ApiClient.uploadCoursesAll(
+                                                                            result.courses,
+                                                                            ctid,
+                                                                            appId,
+                                                                            serviceToken,
+                                                                            deviceId
+                                                                        )
                                                                     }
+                                                                    successCount = result.courses.size
+                                                                } catch (e: Exception) {
+                                                                    YLog.error("Batch upload failed: ${e.message}")
+                                                                    failCount = result.courses.size
+                                                                    errorMessages.add(e.message ?: "未知错误")
                                                                 }
 
                                                                 val message = buildString {
