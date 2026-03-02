@@ -28,6 +28,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )
         }
+
+        androidComponents {
+            onVariants(selector().all()) { variant ->
+                variant.outputs.map { it as com.android.build.api.variant.impl.VariantOutputImpl }
+                    .forEach { output ->
+                        output.outputFileName =
+                            "课表修复_v${output.versionName.get()}(${variant.name}).apk"
+                    }
+            }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -42,7 +52,9 @@ android {
 
     // TODO Please visit https://highcapable.github.io/YukiHookAPI/en/api/special-features/host-inject
     // TODO 请参考 https://highcapable.github.io/YukiHookAPI/zh-cn/api/special-features/host-inject
-     androidResources.additionalParameters += listOf("--allow-reserved-package-id", "--package-id", "0xf4")
+    androidResources.additionalParameters += listOf(
+        "--allow-reserved-package-id", "--package-id", "0xf4"
+    )
 }
 
 tasks.withType<KotlinJvmCompile>().configureEach {
@@ -110,8 +122,11 @@ dependencies {
     implementation("com.github.suzhelan.DialogX:DialogX:$dialogXVersion")
     //非必须 DialogX官方提供的主题样式
     implementation("com.github.suzhelan.DialogX:DialogXKongzueStyle:$dialogXVersion")
-    implementation ("com.github.suzhelan.DialogX:DialogXMIUIStyle:$dialogXVersion")
+    implementation("com.github.suzhelan.DialogX:DialogXMIUIStyle:$dialogXVersion")
     implementation("com.github.suzhelan.DialogX:DialogXIOSStyle:$dialogXVersion")
     implementation("com.github.suzhelan.DialogX:DialogXMaterialYou:$dialogXVersion")
+
+    implementation("io.coil-kt.coil3:coil-compose:3.4.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.4.0")
 
 }

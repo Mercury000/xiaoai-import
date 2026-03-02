@@ -5,7 +5,9 @@ import android.content.Context
 import android.webkit.WebView
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import me.padi.xiaoai.R
 import me.padi.xiaoai.WebAppInterface
+import me.padi.xiaoai.screen.readRawFile
 import top.sacz.xphelper.XpHelper
 
 object MainHook : YukiBaseHooker() {
@@ -50,6 +52,10 @@ object MainHook : YukiBaseHooker() {
                 }.hook {
                     after {
                         val webView = args().first().cast<WebView>()
+                        val tools = webView?.context?.readRawFile(R.raw.tools) ?: ""
+                        webView?.evaluateJavascript(
+                            tools, null
+                        )
                         webView?.evaluateJavascript(
                             """
     (function() {
