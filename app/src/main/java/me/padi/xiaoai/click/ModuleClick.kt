@@ -20,8 +20,9 @@ import java.io.IOException
 
 
 fun importCourseFormJw(context: Context) {
-    BottomMenu.show("指定学校导入", "通用教务系统导入", "AI解析导入").setTitle("提示")
-        .setMessage("选择一个导入方式").setOnMenuItemClickListener { dialog, text, index ->
+    BottomMenu.show("指定学校导入", "拾光课程表导入", "通用教务系统导入", "AI解析导入")
+        .setTitle("提示").setMessage("选择一个导入方式")
+        .setOnMenuItemClickListener { dialog, text, index ->
             when (text) {
                 "AI解析导入" -> {
                     val intent = Intent(context, AiScreen::class.java)
@@ -62,7 +63,6 @@ fun importCourseFormJw(context: Context) {
                                         )
                                     )
                                 }
-
                                 InputDialog(
                                     "提示",
                                     "请输入教务系统链接",
@@ -164,6 +164,247 @@ fun importCourseFormJw(context: Context) {
                             TipDialog.show(
                                 e.message, WaitDialog.TYPE.ERROR
                             );
+                            YLog.debug("GET 失败: ${e.message}")
+                        })
+                }
+
+                "拾光课程表导入" -> {
+                    val activity = context as Activity
+                    val waitDialog = WaitDialog.show("加载中");
+
+                    OkHttpClientManager.get(
+                        url = "https://gitee.com/padi/shiguang/raw/main/school.json",
+                        onSuccess = { response ->
+                            waitDialog.doDismiss()
+                            try {
+                                val responseBody = response.body.string()
+                                val rootJson = JSONObject(responseBody)
+
+                                // 学校数据在 "3" 这个数组里！
+                                val schoolArray = rootJson.getJSONArray("3")
+
+                                // 存储学校信息的列表
+                                val schoolIdList = mutableListOf<String>()      // 学校ID，如 "CQU"
+                                val schoolNameList = mutableListOf<String>()    // 学校名称，如 "重庆大学"
+                                val adapterInfoList = mutableListOf<JSONObject>() // 适配器信息
+
+                                // 遍历数组中的每个学校/工具
+                                for (i in 0 until schoolArray.length()) {
+                                    val item = schoolArray.getJSONObject(i)
+                                    val itemId =
+                                        item.optString("1", "")        // 如 "GLOBAL_TOOLS", "CQU"
+                                    val itemName =
+                                        item.optString("2", "")      // 如 "通用工具与服务", "重庆大学"
+
+                                    // 检查是否有适配器（优先检查 5-1，然后是 5）
+                                    if (item.has("5-1")) {
+                                        val adapterObj = item.get("5-1")
+
+                                        when (adapterObj) {
+                                            is JSONObject -> {
+                                                // 单个适配器
+                                                schoolIdList.add(itemId)
+                                                schoolNameList.add(itemName)
+                                                adapterInfoList.add(adapterObj)
+                                            }
+
+                                            is JSONArray -> {
+                                                // 多个适配器，只取第一个（简化处理）
+                                                if (adapterObj.length() > 0) {
+                                                    schoolIdList.add(itemId)
+                                                    schoolNameList.add(itemName)
+                                                    adapterInfoList.add(adapterObj.getJSONObject(0))
+                                                }
+                                            }
+                                        }
+                                    } else if (item.has("5")) {
+                                        val adapterObj = item.get("5")
+
+                                        if (adapterObj is JSONObject) {
+                                            // 单个适配器
+                                            schoolIdList.add(itemId)
+                                            schoolNameList.add(itemName)
+                                            adapterInfoList.add(adapterObj)
+                                        }
+                                    }
+                                }
+
+                                activity.runOnUiThread {
+                                    if (schoolNameList.isEmpty()) {
+                                        TipDialog.show("没有找到学校数据", WaitDialog.TYPE.ERROR)
+                                        return@runOnUiThread
+                                    }
+
+                                    val schools = schoolNameList.toTypedArray()
+
+                                    BottomMenu.show(schools).setTitle("提示")
+                                        .setMessage("选择你的学校进行导入，如果没有目标学校请申请适配")
+                                        .setSingleSelection()
+                                        .setOnMenuItemClickListener { dialog, text, index ->
+                                            val schoolId = schoolIdList[index]
+                                            val adapterObj = adapterInfoList[index]
+
+                                            // 获取适配器信息
+                                            val adapterName =
+                                                adapterObj.optString("2", "课程表导入")
+                                            val fileName = adapterObj.optString("4", "")
+                                            var schoolUrl = adapterObj.optString("5", "")
+                                            val description = adapterObj.optString(
+                                                "6",
+                                                "请先在浏览器登录教务系统，定位到个人课程表页面后，点击一键导入"
+                                            )
+
+                                            // 构建脚本URL
+                                            val scriptUrl =
+                                                "https://gitee.com/padi/shiguang/raw/main/resources/$schoolId/$fileName"
+                                            //https://gitee.com/padi/shiguang/raw/main/resources/AHSZU/ahszu_01.js
+
+
+                                            YLog.debug("下载脚本: $scriptUrl")
+
+                                            val waitDialog2 = WaitDialog.show("加载中")
+
+                                            OkHttpClientManager.get(
+                                                url = scriptUrl,
+                                                onSuccess = { response2 ->
+                                                    waitDialog2.doDismiss()
+                                                    try {
+                                                        val jsStr = response2.body.string()
+                                                        if (text.contains("通用")) {
+                                                            InputDialog(
+                                                                "提示",
+                                                                "请输入教务系统链接",
+                                                                "确定",
+                                                                "取消",
+                                                                prefs.native()
+                                                                    .getString("jw_webview_url", "")
+                                                            ).setCancelable(false)
+                                                                .setOkButton { baseDialog, v, inputStr ->
+                                                                    prefs.native().edit {
+                                                                        putString(
+                                                                            "jw_webview_url",
+                                                                            inputStr
+                                                                        )
+                                                                    }
+                                                                    schoolUrl = inputStr
+                                                                    val intent = Intent().apply {
+                                                                        component = ComponentName(
+                                                                            "com.xiaomi.aischedule",
+                                                                            "com.xiaomi.aischedule.activity.ScheduleEducationalImportActivity"
+                                                                        )
+                                                                        val params =
+                                                                            JSONObject().apply {
+                                                                                put(
+                                                                                    "url", schoolUrl
+                                                                                )
+                                                                                put(
+                                                                                    "title",
+                                                                                    adapterName
+                                                                                )
+                                                                                put(
+                                                                                    "titleColor",
+                                                                                    "#0D84FF"
+                                                                                )
+                                                                                put(
+                                                                                    "text",
+                                                                                    description
+                                                                                )
+                                                                                put(
+                                                                                    "textColor",
+                                                                                    "#0D84FF"
+                                                                                )
+                                                                                put(
+                                                                                    "buttonText",
+                                                                                    "一键导入"
+                                                                                )
+                                                                                put(
+                                                                                    "buttonTextColor",
+                                                                                    "#0D84FF"
+                                                                                )
+                                                                                put(
+                                                                                    "buttonColor",
+                                                                                    "#d1e8ff"
+                                                                                )
+                                                                                put(
+                                                                                    "backgroundColor",
+                                                                                    "#e7f3ff"
+                                                                                )
+                                                                                put(
+                                                                                    "script",
+                                                                                    "(async function () {${jsStr}})();"
+                                                                                )
+                                                                            }
+                                                                        putExtra(
+                                                                            "EXTRA_PARAMS",
+                                                                            params.toString()
+                                                                        )
+                                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                                    }
+                                                                    context.startActivity(intent)
+                                                                    false
+                                                                }.show()
+                                                        } else {
+
+                                                            val intent = Intent().apply {
+                                                                component = ComponentName(
+                                                                    "com.xiaomi.aischedule",
+                                                                    "com.xiaomi.aischedule.activity.ScheduleEducationalImportActivity"
+                                                                )
+                                                                val params = JSONObject().apply {
+                                                                    put("url", schoolUrl)
+                                                                    put("title", adapterName)
+                                                                    put("titleColor", "#0D84FF")
+                                                                    put("text", description)
+                                                                    put("textColor", "#0D84FF")
+                                                                    put("buttonText", "一键导入")
+                                                                    put(
+                                                                        "buttonTextColor", "#0D84FF"
+                                                                    )
+                                                                    put("buttonColor", "#d1e8ff")
+                                                                    put(
+                                                                        "backgroundColor", "#e7f3ff"
+                                                                    )
+                                                                    put(
+                                                                        "script",
+                                                                        "(async function () {${jsStr}})();"
+                                                                    )
+                                                                }
+                                                                putExtra(
+                                                                    "EXTRA_PARAMS",
+                                                                    params.toString()
+                                                                )
+                                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                            }
+                                                            context.startActivity(intent)
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        TipDialog.show(
+                                                            "脚本加载失败: ${e.message}",
+                                                            WaitDialog.TYPE.ERROR
+                                                        )
+                                                    }
+
+                                                },
+                                                onError = { e ->
+                                                    waitDialog2.doDismiss()
+                                                    TipDialog.show(
+                                                        "下载失败: ${e.message}",
+                                                        WaitDialog.TYPE.ERROR
+                                                    )
+                                                })
+
+                                            false
+                                        }
+                                }
+
+                            } catch (e: Exception) {
+                                YLog.debug("解析失败: ${e.message}")
+                                TipDialog.show("数据解析失败", WaitDialog.TYPE.ERROR)
+                            }
+                        },
+                        onError = { e ->
+                            waitDialog.doDismiss()
+                            TipDialog.show(e.message ?: "网络请求失败", WaitDialog.TYPE.ERROR)
                             YLog.debug("GET 失败: ${e.message}")
                         })
                 }
@@ -293,8 +534,6 @@ fun importCourseFormJw(context: Context) {
 
                 }
             }
-            false
-        }.setCancelButton("取消") { baseDialog, v ->
             false
         }
 }
@@ -449,4 +688,19 @@ data class SystemData(
     val name: String,
     val type: String,
     val status: String,
+)
+
+data class SchoolCategory(
+    val id: String,              // 分类ID，如 "CQU"
+    val name: String,            // 分类名称，如 "重庆大学"
+    val adapters: List<SchoolAdapter> // 该分类下的适配器列表
+)
+
+data class SchoolAdapter(
+    val scriptId: String,        // 脚本ID，如 "CQU_01"
+    val name: String,            // 适配器名称
+    val fileName: String,        // 文件名，如 "cqu.js"
+    val url: String,             // 教务系统URL
+    val description: String,     // 描述说明
+    val author: String           // 作者
 )
