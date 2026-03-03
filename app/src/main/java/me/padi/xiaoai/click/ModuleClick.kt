@@ -47,133 +47,133 @@ fun importCourseFormJw(context: Context) {
                         InputInfo().setMultipleLines(true).setMAX_LENGTH(Int.MAX_VALUE)
                     ).setCancelable(false).setOkButton { baseDialog, v, inputStr ->
 
-                            if (inputStr.isBlank()) {
-                                TipDialog.show("请输入Json内容")
-                                return@setOkButton true
-                            }
+                        if (inputStr.isBlank()) {
+                            TipDialog.show("请输入Json内容")
+                            return@setOkButton true
+                        }
 
-                            WaitDialog.show("正在导入，请稍候...")
+                        WaitDialog.show("正在导入，请稍候...")
 
-                            Thread {
+                        Thread {
 
-                                try {
-                                    val act = context as Activity
-                                    // ========= 1. 解析JSON =========
-                                    val json = JSONObject(inputStr)
-                                    val tableName = json.optString("name").trim()
-                                    val coursesArray = json.optJSONArray("courses")
+                            try {
+                                val act = context as Activity
+                                // ========= 1. 解析JSON =========
+                                val json = JSONObject(inputStr)
+                                val tableName = json.optString("name").trim()
+                                val coursesArray = json.optJSONArray("courses")
 
-                                    if (tableName.isEmpty()) {
-                                        act.runOnUiThread {
-                                            WaitDialog.dismiss()
-                                            TipDialog.show("课表名称不能为空")
-                                        }
-                                        return@Thread
-                                    }
-
-                                    if (coursesArray == null || coursesArray.length() == 0) {
-                                        act.runOnUiThread {
-                                            WaitDialog.dismiss()
-                                            TipDialog.show("课程列表不能为空")
-                                        }
-                                        return@Thread
-                                    }
-
-                                    val appId = "2882303761518539170"
-
-                                    // ========= 2. 获取Token =========
-                                    val serviceToken = try {
-                                        "a.h.g.h".toClass().resolve().firstMethod {
-                                            name = "getInstance"
-                                            parameterCount = 0
-                                        }.invoke()?.asResolver()?.firstMethod {
-                                            name = "getAccessToken"
-                                        }?.invoke<String>()
-                                    } catch (e: Exception) {
-                                        null
-                                    }
-
-                                    val deviceId = try {
-                                        "a.h.a.j.m".toClass().resolve().firstMethod {
-                                            name = "getDeviceId"
-                                        }.invoke<String>()
-                                    } catch (e: Exception) {
-                                        null
-                                    }
-
-                                    if (serviceToken == null || deviceId == null) {
-                                        act.runOnUiThread {
-                                            WaitDialog.dismiss()
-                                            TipDialog.show("无法获取服务令牌或设备ID")
-                                        }
-                                        return@Thread
-                                    }
-
-                                    // ========= 3. 解析课程 =========
-                                    val courses = mutableListOf<Course>()
-
-                                    for (i in 0 until coursesArray.length()) {
-
-                                        val courseJson = coursesArray.getJSONObject(i)
-                                        val c = Course()
-
-                                        c.name = courseJson.optString("name", "").trim()
-                                        c.teacher = courseJson.optString("teacher", "").trim()
-                                        c.position = courseJson.optString("location", "").trim()
-                                        c.day = courseJson.optInt("weekday", 1)
-
-                                        val start = courseJson.optInt("startSection", 1)
-                                        val end = courseJson.optInt("endSection", 2)
-                                        c.sections = "$start-$end"
-
-                                        val weeksArray = courseJson.optJSONArray("weeks")
-                                        c.weeks = if (weeksArray != null) {
-                                            buildString {
-                                                for (j in 0 until weeksArray.length()) {
-                                                    append(weeksArray.getInt(j))
-                                                    if (j != weeksArray.length() - 1) append(",")
-                                                }
-                                            }
-                                        } else ""
-                                        c.style =
-                                            courseJson.optLong("bgColor", 4294948685).toColorHex()
-
-                                        courses.add(c)
-                                    }
-
-                                    // ========= 4. 创建课表（网络） =========
-                                    val ctid = ApiClient.createTable(
-                                        tableName, appId, serviceToken, deviceId
-                                    )
-
-                                    // ========= 5. 上传课程（网络） =========
-                                    ApiClient.uploadCoursesAll(
-                                        courses, ctid, appId, serviceToken, deviceId
-                                    )
-
+                                if (tableName.isEmpty()) {
                                     act.runOnUiThread {
                                         WaitDialog.dismiss()
-                                        TipDialog.show("导入成功")
+                                        TipDialog.show("课表名称不能为空")
                                     }
-
-                                } catch (e: Exception) {
-
-                                    e.printStackTrace()
-                                    val act = context as Activity
-
-                                    act.runOnUiThread {
-                                        WaitDialog.dismiss()
-                                        TipDialog.show(
-                                            "失败: ${e::class.java.simpleName}",
-                                            WaitDialog.TYPE.ERROR
-                                        )
-                                    }
+                                    return@Thread
                                 }
 
-                            }.start()
+                                if (coursesArray == null || coursesArray.length() == 0) {
+                                    act.runOnUiThread {
+                                        WaitDialog.dismiss()
+                                        TipDialog.show("课程列表不能为空")
+                                    }
+                                    return@Thread
+                                }
 
-                            false
-                        }.show()
+                                val appId = "2882303761518539170"
+
+                                // ========= 2. 获取Token =========
+                                val serviceToken = try {
+                                    "a.h.g.h".toClass().resolve().firstMethod {
+                                        name = "getInstance"
+                                        parameterCount = 0
+                                    }.invoke()?.asResolver()?.firstMethod {
+                                        name = "getAccessToken"
+                                    }?.invoke<String>()
+                                } catch (e: Exception) {
+                                    null
+                                }
+
+                                val deviceId = try {
+                                    "a.h.a.j.m".toClass().resolve().firstMethod {
+                                        name = "getDeviceId"
+                                    }.invoke<String>()
+                                } catch (e: Exception) {
+                                    null
+                                }
+
+                                if (serviceToken == null || deviceId == null) {
+                                    act.runOnUiThread {
+                                        WaitDialog.dismiss()
+                                        TipDialog.show("无法获取服务令牌或设备ID")
+                                    }
+                                    return@Thread
+                                }
+
+                                // ========= 3. 解析课程 =========
+                                val courses = mutableListOf<Course>()
+
+                                for (i in 0 until coursesArray.length()) {
+
+                                    val courseJson = coursesArray.getJSONObject(i)
+                                    val c = Course()
+
+                                    c.name = courseJson.optString("name", "").trim()
+                                    c.teacher = courseJson.optString("teacher", "").trim()
+                                    c.position = courseJson.optString("location", "").trim()
+                                    c.day = courseJson.optInt("weekday", 1)
+
+                                    val start = courseJson.optInt("startSection", 1)
+                                    val end = courseJson.optInt("endSection", 2)
+                                    c.sections = "$start,$end"
+
+                                    val weeksArray = courseJson.optJSONArray("weeks")
+                                    c.weeks = if (weeksArray != null) {
+                                        buildString {
+                                            for (j in 0 until weeksArray.length()) {
+                                                append(weeksArray.getInt(j))
+                                                if (j != weeksArray.length() - 1) append(",")
+                                            }
+                                        }
+                                    } else ""
+                                    c.style = """
+                                        {"color":"#00A6F2","background":"%s"}
+                                    """.trimIndent().format(courseJson.optLong("bgColor", 4294948685).toColorHex())
+
+                                    courses.add(c)
+                                }
+
+                                // ========= 4. 创建课表（网络） =========
+                                val ctid = ApiClient.createTable(
+                                    tableName, appId, serviceToken, deviceId
+                                )
+
+                                // ========= 5. 上传课程（网络） =========
+                                ApiClient.uploadCoursesAll(
+                                    courses, ctid, appId, serviceToken, deviceId
+                                )
+
+                                act.runOnUiThread {
+                                    WaitDialog.dismiss()
+                                    TipDialog.show("导入成功")
+                                }
+
+                            } catch (e: Exception) {
+
+                                e.printStackTrace()
+                                val act = context as Activity
+
+                                act.runOnUiThread {
+                                    WaitDialog.dismiss()
+                                    TipDialog.show(
+                                        "失败: ${e::class.java.simpleName}", WaitDialog.TYPE.ERROR
+                                    )
+                                }
+                            }
+
+                        }.start()
+
+                        false
+                    }.show()
                 }
 
                 "通用教务系统导入" -> {
