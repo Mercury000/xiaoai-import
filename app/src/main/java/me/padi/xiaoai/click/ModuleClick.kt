@@ -5,23 +5,30 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
+import com.highcapable.kavaref.KavaRef.Companion.asResolver
+import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.log.YLog
 import com.kongzue.dialogx.dialogs.BottomMenu
 import com.kongzue.dialogx.dialogs.InputDialog
 import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
+import com.kongzue.dialogx.util.InputInfo
+import me.padi.xiaoai.ApiClient
+import me.padi.xiaoai.Course
 import me.padi.xiaoai.OkHttpClientManager
 import me.padi.xiaoai.get
 import me.padi.xiaoai.hook.MainHook.prefs
 import me.padi.xiaoai.screen.AiScreen
 import org.json.JSONArray
 import org.json.JSONObject
+import top.sacz.xphelper.ext.toClass
 import java.io.IOException
 
 
 fun importCourseFormJw(context: Context) {
-    BottomMenu.show("指定学校导入", "拾光课程表导入", "通用教务系统导入", "AI解析导入")
-        .setTitle("提示").setMessage("选择一个导入方式")
+    BottomMenu.show(
+        "指定学校导入", "拾光课程表导入", "星链课表Json导入", "通用教务系统导入", "AI解析导入"
+    ).setTitle("提示").setMessage("选择一个导入方式")
         .setOnMenuItemClickListener { dialog, text, index ->
             when (text) {
                 "AI解析导入" -> {
@@ -31,6 +38,142 @@ fun importCourseFormJw(context: Context) {
                         "com.xiaomi.aischedule.activity.DeleteAccountActivity"
                     )
                     context.startActivity(intent)
+                }
+
+                "星链课表Json导入" -> {
+                    InputDialog(
+                        "提示", "请输入星链课表分享的Json文本进行导入", "导入", "取消", ""
+                    ).setInputInfo(
+                        InputInfo().setMultipleLines(true).setMAX_LENGTH(Int.MAX_VALUE)
+                    ).setCancelable(false).setOkButton { baseDialog, v, inputStr ->
+
+                            if (inputStr.isBlank()) {
+                                TipDialog.show("请输入Json内容")
+                                return@setOkButton true
+                            }
+
+                            WaitDialog.show("正在导入，请稍候...")
+
+                            Thread {
+
+                                try {
+                                    val act = context as Activity
+                                    // ========= 1. 解析JSON =========
+                                    val json = JSONObject(inputStr)
+                                    val tableName = json.optString("name").trim()
+                                    val coursesArray = json.optJSONArray("courses")
+
+                                    if (tableName.isEmpty()) {
+                                        act.runOnUiThread {
+                                            WaitDialog.dismiss()
+                                            TipDialog.show("课表名称不能为空")
+                                        }
+                                        return@Thread
+                                    }
+
+                                    if (coursesArray == null || coursesArray.length() == 0) {
+                                        act.runOnUiThread {
+                                            WaitDialog.dismiss()
+                                            TipDialog.show("课程列表不能为空")
+                                        }
+                                        return@Thread
+                                    }
+
+                                    val appId = "2882303761518539170"
+
+                                    // ========= 2. 获取Token =========
+                                    val serviceToken = try {
+                                        "a.h.g.h".toClass().resolve().firstMethod {
+                                            name = "getInstance"
+                                            parameterCount = 0
+                                        }.invoke()?.asResolver()?.firstMethod {
+                                            name = "getAccessToken"
+                                        }?.invoke<String>()
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+
+                                    val deviceId = try {
+                                        "a.h.a.j.m".toClass().resolve().firstMethod {
+                                            name = "getDeviceId"
+                                        }.invoke<String>()
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+
+                                    if (serviceToken == null || deviceId == null) {
+                                        act.runOnUiThread {
+                                            WaitDialog.dismiss()
+                                            TipDialog.show("无法获取服务令牌或设备ID")
+                                        }
+                                        return@Thread
+                                    }
+
+                                    // ========= 3. 解析课程 =========
+                                    val courses = mutableListOf<Course>()
+
+                                    for (i in 0 until coursesArray.length()) {
+
+                                        val courseJson = coursesArray.getJSONObject(i)
+                                        val c = Course()
+
+                                        c.name = courseJson.optString("name", "").trim()
+                                        c.teacher = courseJson.optString("teacher", "").trim()
+                                        c.position = courseJson.optString("location", "").trim()
+                                        c.day = courseJson.optInt("weekday", 1)
+
+                                        val start = courseJson.optInt("startSection", 1)
+                                        val end = courseJson.optInt("endSection", 2)
+                                        c.sections = "$start-$end"
+
+                                        val weeksArray = courseJson.optJSONArray("weeks")
+                                        c.weeks = if (weeksArray != null) {
+                                            buildString {
+                                                for (j in 0 until weeksArray.length()) {
+                                                    append(weeksArray.getInt(j))
+                                                    if (j != weeksArray.length() - 1) append(",")
+                                                }
+                                            }
+                                        } else ""
+                                        c.style =
+                                            courseJson.optLong("bgColor", 4294948685).toColorHex()
+
+                                        courses.add(c)
+                                    }
+
+                                    // ========= 4. 创建课表（网络） =========
+                                    val ctid = ApiClient.createTable(
+                                        tableName, appId, serviceToken, deviceId
+                                    )
+
+                                    // ========= 5. 上传课程（网络） =========
+                                    ApiClient.uploadCoursesAll(
+                                        courses, ctid, appId, serviceToken, deviceId
+                                    )
+
+                                    act.runOnUiThread {
+                                        WaitDialog.dismiss()
+                                        TipDialog.show("导入成功")
+                                    }
+
+                                } catch (e: Exception) {
+
+                                    e.printStackTrace()
+                                    val act = context as Activity
+
+                                    act.runOnUiThread {
+                                        WaitDialog.dismiss()
+                                        TipDialog.show(
+                                            "失败: ${e::class.java.simpleName}",
+                                            WaitDialog.TYPE.ERROR
+                                        )
+                                    }
+                                }
+
+                            }.start()
+
+                            false
+                        }.show()
                 }
 
                 "通用教务系统导入" -> {
@@ -669,6 +812,25 @@ fun openContributorQQ(context: Context, uin: String) {
     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     context.startActivity(intent)
 }
+
+fun Long.toColorHex(includeAlpha: Boolean = false): String {
+    return if (includeAlpha) {
+        String.format("#%08X", this)  // 包含透明度
+    } else {
+        String.format("#%06X", this and 0xFFFFFF)  // 只包含 RGB
+    }
+}
+
+private fun parseWeeks(weeksArray: JSONArray?): List<Int> {
+    val weeks = mutableListOf<Int>()
+    if (weeksArray != null) {
+        for (i in 0 until weeksArray.length()) {
+            weeks.add(weeksArray.getInt(i))
+        }
+    }
+    return weeks
+}
+
 
 data class SchoolData(
     val name: String,
