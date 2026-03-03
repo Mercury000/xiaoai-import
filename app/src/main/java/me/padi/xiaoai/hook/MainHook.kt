@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.Context
 import android.webkit.WebView
 import android.widget.EditText
-import android.widget.Toast
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
@@ -171,7 +170,6 @@ object MainHook : YukiBaseHooker() {
 
                                         latestTimerRes = timerRes
                                         val timer = timerRes.toString()
-                                        YLog.debug(timer)
                                         webView.post {
                                             webView.evaluateJavascript(
                                                 "window.TIME_RES = JSON.parse(${
@@ -205,6 +203,7 @@ object MainHook : YukiBaseHooker() {
                                             targetArray.put(targetObj)
                                         }
                                         latestTimeSlotRes = targetArray
+
                                         callback(true, "时间段保存成功")
                                     } catch (e: Exception) {
                                         YLog.error("onSavePresetTimeSlots 处理失败: ${e.message}")
@@ -217,6 +216,8 @@ object MainHook : YukiBaseHooker() {
                                         JSONObject(latestTimerRes?.toString() ?: "{}")
                                     mergedTimerRes.put("sections", latestTimeSlotRes ?: JSONArray())
                                     val mergedJson = mergedTimerRes.toString()
+
+                                    YLog.debug(mergedJson)
 
                                     webView.post {
                                         webView.evaluateJavascript(
@@ -275,7 +276,7 @@ object MainHook : YukiBaseHooker() {
                                                     });
                                                   };
 
-                                                report(0, {
+                                                report(0, { 
                                                   parserRes: window.PARSED_DATA,
                                                   timerRes: window.TIME_RES,
                                                   feedbackId: 0,
@@ -284,8 +285,6 @@ object MainHook : YukiBaseHooker() {
                                                 });
                                           """.trimIndent(), null
                                         )
-                                        Toast.makeText(context, "任务完成", Toast.LENGTH_SHORT)
-                                            .show()
                                     }
                                 }
 

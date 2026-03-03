@@ -1,10 +1,27 @@
 package me.padi.xiaoai;
 
 import android.util.Base64;
-import okhttp3.*;
-import org.json.*;
-import java.util.*;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+
+import okhttp3.Callback;
+import okhttp3.Cookie;
+import okhttp3.CookieJar;
+import okhttp3.HttpUrl;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class ApiClient {
     public static final String PUBLIC_UA = "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36";
@@ -50,34 +67,38 @@ public class ApiClient {
 
     public static final String SYSTEM_PROMPT =
             "你是一个专业的大学课表解析助手。\n" +
-            "从教务系统的HTML中提取信息，并以严格的JSON格式返回两部分：'courses' (必填) 和 'schedule' (选填)。格式如下：\n" +
-            "{\n" +
-            "  \"courses\": [\n" +
-            "    {\"name\":\"课程名称\",\"teacher\":\"教师姓名\",\"position\":\"上课地点\"," +
-            "\"day\":1,\"sections\":\"1,2\",\"weeks\":\"1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16\"}\n" +
-            "  ],\n" +
-            "  \"schedule\": {\n" +
-            "    \"morningNum\": 上午节数 (如 5),\n" +
-            "    \"afternoonNum\": 下午节数 (如 4),\n" +
-            "    \"nightNum\": 晚上节数 (如 3),\n" +
-            "    \"sections\": \"[{\\\"i\\\":1,\\\"s\\\":\\\"08:00\\\",\\\"e\\\":\\\"08:45\\\"},...]\"\n" +
-            "  }\n" +
-            "}\n" +
-            "rules:\n" +
-            "- day: 1=周一, 2=周二... sections: 逗号分隔如 \"1,2\"\n" +
-            "- 同一课程不同周次/不同时间必须拆成独立的course对象\n" +
-            "- schedule对象是可选的，且其内部字段（如节数和具体时间表sections）均为相互独立、按需提取的内容。即使只找到其中一个，也请把对应的字段放在schedule中返回，未找到的字段直接省略即可，切勿自行编造。如果全都没有，则可省略整个schedule对象。\n" +
-            "- schedule内的sections必须是一个转义好的、合法JSON字符串的结构。\n" +
-            "- 严禁直接照抄提示词示例(如\"[{\\\"i\\\":1,...}]\")！你必须且只能从用户提供的真实HTML源码中提取实际的时间表。如果HTML中没有时间表，必须彻底省略sections字段，绝不能使用或伪造示例数据！\n" +
-            "- 必须且仅能输出上述纯JSON结构，不可包含任何外部包裹符(如```json)或代码说明。";
+                    "从教务系统的HTML中提取信息，并以严格的JSON格式返回两部分：'courses' (必填) 和 'schedule' (选填)。格式如下：\n" +
+                    "{\n" +
+                    "  \"courses\": [\n" +
+                    "    {\"name\":\"课程名称\",\"teacher\":\"教师姓名\",\"position\":\"上课地点\"," +
+                    "\"day\":1,\"sections\":\"1,2\",\"weeks\":\"1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16\"}\n" +
+                    "  ],\n" +
+                    "  \"schedule\": {\n" +
+                    "    \"morningNum\": 上午节数 (如 5),\n" +
+                    "    \"afternoonNum\": 下午节数 (如 4),\n" +
+                    "    \"nightNum\": 晚上节数 (如 3),\n" +
+                    "    \"sections\": \"[{\\\"i\\\":1,\\\"s\\\":\\\"08:00\\\",\\\"e\\\":\\\"08:45\\\"},...]\"\n" +
+                    "  }\n" +
+                    "}\n" +
+                    "rules:\n" +
+                    "- day: 1=周一, 2=周二... sections: 逗号分隔如 \"1,2\"\n" +
+                    "- 同一课程不同周次/不同时间必须拆成独立的course对象\n" +
+                    "- schedule对象是可选的，且其内部字段（如节数和具体时间表sections）均为相互独立、按需提取的内容。即使只找到其中一个，也请把对应的字段放在schedule中返回，未找到的字段直接省略即可，切勿自行编造。如果全都没有，则可省略整个schedule对象。\n" +
+                    "- schedule内的sections必须是一个转义好的、合法JSON字符串的结构。\n" +
+                    "- 严禁直接照抄提示词示例(如\"[{\\\"i\\\":1,...}]\")！你必须且只能从用户提供的真实HTML源码中提取实际的时间表。如果HTML中没有时间表，必须彻底省略sections字段，绝不能使用或伪造示例数据！\n" +
+                    "- 必须且仅能输出上述纯JSON结构，不可包含任何外部包裹符(如```json)或代码说明。";
 
     public interface ParseCallback {
         void onUpdate(String reasoning, String content);
+
         void onSuccess(ParseResult result);
+
         void onError(Exception e);
     }
 
-    /** 调用 AI 接口解析课表 HTML 并支持流式返回 */
+    /**
+     * 调用 AI 接口解析课表 HTML 并支持流式返回
+     */
     public static void parseCoursesStreaming(String html, String apiKey, String model, String baseUrl, String systemPrompt, ParseCallback callback) {
         try {
             if (html.length() > 150000) html = html.substring(0, 150000);
@@ -128,7 +149,7 @@ public class ApiClient {
                                 if (delta != null) {
                                     String reasoning = delta.isNull("reasoning_content") ? "" : delta.optString("reasoning_content", "");
                                     String content = delta.isNull("content") ? "" : delta.optString("content", "");
-                                    
+
                                     if (!content.isEmpty()) {
                                         fullContent.append(content);
                                     }
@@ -137,12 +158,13 @@ public class ApiClient {
                                     }
                                 }
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
                 }
 
                 String aiResponseContent = fullContent.toString().trim();
-                
+
                 // 解决大模型有时返回 schedule.sections 时包裹了双引号但内部却未转义引发的 JSON 语法崩溃
                 aiResponseContent = repairAiJson(aiResponseContent);
 
@@ -201,7 +223,7 @@ public class ApiClient {
             c.position = o.optString("position", "").trim();
             c.day = o.optInt("day", 1);
             c.sections = o.optString("sections", "1,2").trim();
-            
+
             if (o.has("weeks")) {
                 Object weeksObj = o.get("weeks");
                 if (weeksObj instanceof JSONArray) {
@@ -247,9 +269,12 @@ public class ApiClient {
         if (fullResponseJson.has("schedule") && !fullResponseJson.isNull("schedule")) {
             JSONObject scheduleJson = fullResponseJson.getJSONObject("schedule");
             ScheduleConfig scheduleConfig = new ScheduleConfig();
-            if (scheduleJson.has("morningNum")) scheduleConfig.morningNum = scheduleJson.optInt("morningNum");
-            if (scheduleJson.has("afternoonNum")) scheduleConfig.afternoonNum = scheduleJson.optInt("afternoonNum");
-            if (scheduleJson.has("nightNum")) scheduleConfig.nightNum = scheduleJson.optInt("nightNum");
+            if (scheduleJson.has("morningNum"))
+                scheduleConfig.morningNum = scheduleJson.optInt("morningNum");
+            if (scheduleJson.has("afternoonNum"))
+                scheduleConfig.afternoonNum = scheduleJson.optInt("afternoonNum");
+            if (scheduleJson.has("nightNum"))
+                scheduleConfig.nightNum = scheduleJson.optInt("nightNum");
             if (scheduleJson.has("sections")) {
                 Object secObj = scheduleJson.opt("sections");
                 if (secObj instanceof JSONArray) scheduleConfig.sections = secObj.toString();
@@ -260,7 +285,9 @@ public class ApiClient {
         return parseResult;
     }
 
-    /** 批量上传课程到小爱课表（POST /course-multi-auth/courseInfos） */
+    /**
+     * 批量上传课程到小爱课表（POST /course-multi-auth/courseInfos）
+     */
     public static void uploadCoursesAll(List<Course> courses, long ctId, String appId,
                                         String serviceToken, String deviceId) throws Exception {
         JSONArray courseArray = new JSONArray();
@@ -325,7 +352,9 @@ public class ApiClient {
         }
     }
 
-    /** 获取课表列表 */
+    /**
+     * 获取课表列表
+     */
     public static List<CourseTable> fetchTables(String appId, String serviceToken, String deviceId) throws Exception {
         String url = "https://i.ai.mi.com/course-multi-auth/tables?requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=course-app-aiSchedule";
         Request req = new Request.Builder()
@@ -346,7 +375,8 @@ public class ApiClient {
                 throw new Exception("请求课表列表失败(HTTP " + resp.code() + ")");
             }
             JSONObject json = new JSONObject(raw);
-            if (json.optInt("code", -1) != 0) throw new Exception(json.optString("desc", "获取课表列表失败"));
+            if (json.optInt("code", -1) != 0)
+                throw new Exception(json.optString("desc", "获取课表列表失败"));
             JSONArray data = json.getJSONArray("data");
             List<CourseTable> list = new ArrayList<>();
             for (int i = 0; i < data.length(); i++) {
@@ -362,7 +392,9 @@ public class ApiClient {
         }
     }
 
-    /** 查询某课表的详细配置及现有课程ID */
+    /**
+     * 查询某课表的详细配置及现有课程ID
+     */
     public static void fetchTableDetail(CourseTable table, String appId, String serviceToken, String deviceId) throws Exception {
         String url = "https://i.ai.mi.com/course-multi-auth/table?ctId=" + table.id + "&requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=course-app-aiSchedule";
         Request req = new Request.Builder()
@@ -376,9 +408,11 @@ public class ApiClient {
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful()) throw new Exception("查询课表详情失败(HTTP " + resp.code() + ")");
+            if (!resp.isSuccessful())
+                throw new Exception("查询课表详情失败(HTTP " + resp.code() + ")");
             JSONObject json = new JSONObject(raw);
-            if (json.optInt("code", -1) != 0) throw new Exception(json.optString("desc", "查询课表详情失败"));
+            if (json.optInt("code", -1) != 0)
+                throw new Exception(json.optString("desc", "查询课表详情失败"));
             JSONObject data = json.getJSONObject("data");
             if (data.has("setting")) table.settingStr = data.getJSONObject("setting").toString();
             table.existingCourseIds.clear();
@@ -391,7 +425,9 @@ public class ApiClient {
         }
     }
 
-    /** 删除单条课程 */
+    /**
+     * 删除单条课程
+     */
     public static void deleteCourse(long ctId, long cId, String appId, String serviceToken, String deviceId) throws Exception {
         JSONObject body = new JSONObject().put("ctId", ctId).put("cId", cId).put("sourceName", "course-app-aiSchedule");
         Request req = new Request.Builder()
@@ -403,11 +439,14 @@ public class ApiClient {
                 .delete(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
-            if (!resp.isSuccessful()) throw new Exception("删除旧课表失败(HTTP " + resp.code() + ")");
+            if (!resp.isSuccessful())
+                throw new Exception("删除旧课表失败(HTTP " + resp.code() + ")");
         }
     }
 
-    /** 新建课表，返回 ctId */
+    /**
+     * 新建课表，返回 ctId
+     */
     public static long createTable(String name, String appId, String serviceToken, String deviceId) throws Exception {
         JSONObject body = new JSONObject().put("name", name).put("current", 0).put("sourceName", "course-app-aiSchedule");
         Request req = new Request.Builder()
@@ -420,16 +459,19 @@ public class ApiClient {
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful()) throw new Exception("新建课表请求失败(HTTP " + resp.code() + ")");
+            if (!resp.isSuccessful())
+                throw new Exception("新建课表请求失败(HTTP " + resp.code() + ")");
             JSONObject json = new JSONObject(raw);
-            if (json.optInt("code", -1) != 0) throw new Exception(json.optString("desc", "新建课表响应错误"));
+            if (json.optInt("code", -1) != 0)
+                throw new Exception(json.optString("desc", "新建课表响应错误"));
             return json.getLong("data"); // created ctId
         }
     }
 
     public static void updateTableSettings(long ctId, String name, String sourceSettingStr, String originalSettingStr, ScheduleConfig customSchedule, String appId, String serviceToken, String deviceId) throws Exception {
-        if (sourceSettingStr == null || sourceSettingStr.isEmpty() || originalSettingStr == null || originalSettingStr.isEmpty()) return;
-        
+        if (sourceSettingStr == null || sourceSettingStr.isEmpty() || originalSettingStr == null || originalSettingStr.isEmpty())
+            return;
+
         JSONObject sourceObj = new JSONObject(sourceSettingStr);
         JSONObject origObj = new JSONObject(originalSettingStr);
         JSONObject merged = new JSONObject();
@@ -454,15 +496,18 @@ public class ApiClient {
         } else if (sourceObj.has("sectionTimes")) {
             merged.put("sections", sourceObj.get("sectionTimes"));
         }
-        
+
         // 3. Override styling layout details with user's explicitly extracted schedule (if passed and permitted)
         if (customSchedule != null) {
-            if (customSchedule.morningNum != null) merged.put("morningNum", customSchedule.morningNum);
-            if (customSchedule.afternoonNum != null) merged.put("afternoonNum", customSchedule.afternoonNum);
+            if (customSchedule.morningNum != null)
+                merged.put("morningNum", customSchedule.morningNum);
+            if (customSchedule.afternoonNum != null)
+                merged.put("afternoonNum", customSchedule.afternoonNum);
             if (customSchedule.nightNum != null) merged.put("nightNum", customSchedule.nightNum);
-            if (customSchedule.sections != null && !customSchedule.sections.isEmpty()) merged.put("sections", customSchedule.sections);
+            if (customSchedule.sections != null && !customSchedule.sections.isEmpty())
+                merged.put("sections", customSchedule.sections);
         }
-        
+
         // Handle school empty values (API expects "{}" instead of "")
         String school = sourceObj.optString("school", "{}");
         if (school.isEmpty()) school = "{}";
@@ -470,15 +515,20 @@ public class ApiClient {
 
         // 3. Merge inside `extend`
         JSONObject mergedExt = new JSONObject();
-        try { mergedExt = new JSONObject(origObj.optString("extend", "{}")); } catch (Exception ignored) {}
-        
+        try {
+            mergedExt = new JSONObject(origObj.optString("extend", "{}"));
+        } catch (Exception ignored) {
+        }
+
         try {
             JSONObject sourceExt = new JSONObject(sourceObj.optString("extend", "{}"));
             if (sourceExt.has("bgSetting")) mergedExt.put("bgSetting", sourceExt.get("bgSetting"));
             if (sourceExt.has("degree")) mergedExt.put("degree", sourceExt.get("degree"));
-            if (sourceExt.has("showNotInWeek")) mergedExt.put("showNotInWeek", sourceExt.get("showNotInWeek"));
-        } catch (Exception ignored) {}
-        
+            if (sourceExt.has("showNotInWeek"))
+                mergedExt.put("showNotInWeek", sourceExt.get("showNotInWeek"));
+        } catch (Exception ignored) {
+        }
+
         merged.put("extend", mergedExt.toString());
 
         JSONObject body = new JSONObject()
@@ -494,10 +544,14 @@ public class ApiClient {
                 .put(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
-            if (!resp.isSuccessful()) throw new Exception("同步课表设置失败(HTTP " + resp.code() + ")");
+            if (!resp.isSuccessful())
+                throw new Exception("同步课表设置失败(HTTP " + resp.code() + ")");
         }
     }
-    /** 切换默认课表 */
+
+    /**
+     * 切换默认课表
+     */
     public static void switchTable(long fromCtId, long toCtId, String appId, String serviceToken, String deviceId) throws Exception {
         JSONObject body = new JSONObject()
                 .put("fromCtId", fromCtId)
@@ -516,10 +570,12 @@ public class ApiClient {
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful()) throw new Exception("切换课表失败(HTTP " + resp.code() + "): " + raw);
+            if (!resp.isSuccessful())
+                throw new Exception("切换课表失败(HTTP " + resp.code() + "): " + raw);
             JSONObject json = new JSONObject(raw);
             int code = json.optInt("code", -1);
-            if (code != 0 && code != 200) throw new Exception(json.optString("desc", json.optString("msg", "切换课表失败")));
+            if (code != 0 && code != 200)
+                throw new Exception(json.optString("desc", json.optString("msg", "切换课表失败")));
         }
     }
 

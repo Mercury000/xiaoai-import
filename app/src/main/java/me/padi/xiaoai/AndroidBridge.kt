@@ -175,9 +175,7 @@ class AndroidBridge(
                 for (i in 0 until jsonArray.length()) {
                     items.add(jsonArray.getString(i))
                 }
-
                 val data = SingleSelectionDialogData(titleText, items, defaultSelectedIndex)
-
                 callback.onShowSingleSelection(data) { selectedIndex ->
                     if (selectedIndex != null) {
                         resolveJsPromise(promiseId, selectedIndex.toString())
@@ -198,12 +196,9 @@ class AndroidBridge(
     @JavascriptInterface
     fun saveImportedCourses(coursesJsonString: String, promiseId: String) {
         Log.d(TAG, "接收到课程数据，大小: ${coursesJsonString.length / 1024} KB")
-
-        // 通过回调处理保存逻辑
         callback.onSaveImportedCourses(coursesJsonString) { success, errorMsg ->
             handler.post {
                 if (success) {
-                    Toast.makeText(context, "课程导入成功！课表已更新。", Toast.LENGTH_LONG).show()
                     resolveJsPromise(promiseId, "true")
                 } else {
                     Toast.makeText(context, errorMsg ?: "课程导入失败", Toast.LENGTH_LONG).show()
@@ -219,12 +214,9 @@ class AndroidBridge(
     @JavascriptInterface
     fun saveCourseConfig(configJsonString: String, promiseId: String) {
         Log.d(TAG, "接收到课表配置数据，大小: ${configJsonString.length} 字节")
-
-
         callback.onSaveCourseConfig(configJsonString) { success, errorMsg ->
             handler.post {
                 if (success) {
-                    Toast.makeText(context, "课表配置导入成功！", Toast.LENGTH_LONG).show()
                     resolveJsPromise(promiseId, "true")
                 } else {
                     Toast.makeText(context, errorMsg ?: "课表配置导入失败", Toast.LENGTH_LONG)
@@ -243,7 +235,6 @@ class AndroidBridge(
         callback.onSavePresetTimeSlots(timeSlotsJsonString) { success, errorMsg ->
             handler.post {
                 if (success) {
-                    Toast.makeText(context, "预设时间段导入成功！", Toast.LENGTH_LONG).show()
                     resolveJsPromise(promiseId, "true")
                 } else {
                     Toast.makeText(context, errorMsg ?: "预设时间段导入失败", Toast.LENGTH_LONG)

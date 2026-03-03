@@ -14,6 +14,7 @@ import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
 import com.kongzue.dialogx.util.InputInfo
 import me.padi.xiaoai.ApiClient
+import me.padi.xiaoai.ApiClient.COLOR_PRESETS
 import me.padi.xiaoai.Course
 import me.padi.xiaoai.OkHttpClientManager
 import me.padi.xiaoai.get
@@ -23,11 +24,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import top.sacz.xphelper.ext.toClass
 import java.io.IOException
+import kotlin.math.abs
 
 
 fun importCourseFormJw(context: Context) {
     BottomMenu.show(
-        "指定学校导入", "拾光课程表导入", "星链课表Json导入", "通用教务系统导入", "AI解析导入"
+        "指定学校导入", "拾光适配仓库", "星链课表Json导入", "通用教务系统导入", "AI解析导入"
     ).setTitle("提示").setMessage("选择一个导入方式")
         .setOnMenuItemClickListener { dialog, text, index ->
             when (text) {
@@ -135,17 +137,37 @@ fun importCourseFormJw(context: Context) {
                                             }
                                         }
                                     } else ""
-                                    c.style = """
-                                        {"color":"#00A6F2","background":"%s"}
-                                    """.trimIndent().format(courseJson.optLong("bgColor", 4294948685).toColorHex())
+
+                                    val colorIndex = if (c.name.isNotEmpty()) {
+                                        abs(c.name.hashCode() % COLOR_PRESETS.size)
+                                    } else {
+                                        i % COLOR_PRESETS.size
+                                    }
+
+                                    c.style = COLOR_PRESETS[colorIndex]
 
                                     courses.add(c)
                                 }
 
-                                // ========= 4. 创建课表（网络） =========
                                 val ctid = ApiClient.createTable(
                                     tableName, appId, serviceToken, deviceId
                                 )
+
+
+                                val tables = ApiClient.fetchTables(appId, serviceToken, deviceId)
+
+                                val currentTable = tables.firstOrNull { it.current == 1 }
+
+                                if (currentTable != null) {
+                                    val fromCid = currentTable.id
+                                    // 切换到当前课表（如果还没切换的话）
+                                    ApiClient.switchTable(
+                                        fromCid, ctid, appId, serviceToken, deviceId
+                                    )
+
+                                } else {
+                                    TipDialog.show("未找到当前课表")
+                                }
 
                                 // ========= 5. 上传课程（网络） =========
                                 ApiClient.uploadCoursesAll(
@@ -311,7 +333,7 @@ fun importCourseFormJw(context: Context) {
                         })
                 }
 
-                "拾光课程表导入" -> {
+                "拾光适配仓库" -> {
                     val activity = context as Activity
                     val waitDialog = WaitDialog.show("加载中");
 
@@ -413,7 +435,7 @@ fun importCourseFormJw(context: Context) {
                                                     waitDialog2.doDismiss()
                                                     try {
                                                         val jsStr = response2.body.string()
-                                                        if (text.contains("通用")) {
+                                                        if (text.contains("-通用教务")) {
                                                             InputDialog(
                                                                 "提示",
                                                                 "请输入教务系统链接",
