@@ -13,7 +13,7 @@ import top.sacz.xphelper.XpHelper
 @InjectYukiHookWithXposed
 class HookEntry : IYukiHookXposedInit {
     companion object {
-        val prefs get() = configs.prefs()
+        val prefs get() = XpHelper.context.prefs()
     }
 
     override fun onInit() = configs {

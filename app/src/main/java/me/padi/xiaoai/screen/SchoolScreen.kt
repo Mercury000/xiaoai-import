@@ -1,19 +1,18 @@
 package me.padi.xiaoai.screen
 
 import android.annotation.SuppressLint
-import android.app.Activity
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RawRes
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,26 +35,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.highcapable.kavaref.KavaRef.Companion.asResolver
-import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.log.YLog
 import com.kevinnzou.web.AccompanistWebViewClient
+import com.kevinnzou.web.WebContent
 import com.kevinnzou.web.WebView
 import com.kevinnzou.web.rememberWebViewNavigator
 import com.kevinnzou.web.rememberWebViewState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import me.padi.xiaoai.click.queryScoreFormSchool
+import me.padi.xiaoai.click.openContributorQQ
+import me.padi.xiaoai.hook.HookEntry
+import me.padi.xiaoai.proxyActivity
 import me.padi.xiaoai.ApiClient
-import me.padi.xiaoai.ApiClient.ParseCallback
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
 import me.padi.xiaoai.R
-import me.padi.xiaoai.hook.HookEntry.prefs
 import org.json.JSONArray
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
-import top.sacz.xphelper.ext.toClass
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -72,525 +67,223 @@ import top.yukonga.miuix.kmp.extra.SuperArrow
 import top.yukonga.miuix.kmp.extra.WindowBottomSheet
 import top.yukonga.miuix.kmp.extra.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+data class SchoolData(
+    val name: String,
+    val type: String,
+    val url: String,
+    val importType: String,
+    val sortKey: String
+)
+
+enum class SchoolImportType {
+    JW,
+    COMMON
+}
 
 class SchoolScreen : BaseActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         val jsonString = readRawFile(R.raw.school) ?: ""
-
         val schoolsArray = JSONArray(jsonString)
         val schoolList = mutableListOf<SchoolData>()
 
         for (i in 0 until schoolsArray.length()) {
             val school = schoolsArray.getJSONObject(i)
-            val name = school.getString("name")
-            val type = school.getString("type")
-            val url = school.getString("url")
-            val importType = school.getString("importType")
-            val sortKey = school.getString("sortKey")
-
-            schoolList.add(SchoolData(name, type, url, importType, sortKey))
+            schoolList.add(SchoolData(
+                school.getString("name"),
+                school.getString("type"),
+                school.getString("url"),
+                school.getString("importType"),
+                school.getString("sortKey")
+            ))
         }
 
         setContent {
             MiuixTheme {
-                SchoolListScreenContent(schoolList = schoolList)
+                SchoolListScreenContent(schoolList)
             }
         }
     }
-}
 
-data class SchoolData(
-    val name: String, val type: String, val url: String, val importType: String, val sortKey: String
-)
-
-fun Context.readRawFile(@RawRes resourceId: Int): String? {
-    return try {
-        resources.openRawResource(resourceId).bufferedReader().use { it.readText() }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
+    private fun readRawFile(@RawRes resId: Int): String? {
+        return try {
+            resources.openRawResource(resId).bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            null
+        }
     }
-}
-
-// 导入状态类
-sealed class ImportState {
-    object Idle : ImportState()
-    object Loading : ImportState()
-    object Parsing : ImportState()
-    data class Success(val message: String) : ImportState()
-    data class Error(val message: String) : ImportState()
 }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun SchoolListScreenContent(schoolList: List<SchoolData>) {
-    var showBottomSheet = remember { mutableStateOf(false) }
+private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
     var searchText by remember { mutableStateOf("") }
-    var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
-    var currentSchoolName by remember { mutableStateOf("") }
-    var tableName by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf("") }
-    val showErrorDialog = remember { mutableStateOf(false) }
-    var resultMessage by remember { mutableStateOf("") }
-    val showResultDialog = remember { mutableStateOf(false) }
-    val setErrorState: (String) -> Unit = { message ->
-        importState = ImportState.Error(message)
-        errorMessage = message
-        showErrorDialog.value = true
-    }
-
     val filteredSchoolList = remember(searchText, schoolList) {
-        if (searchText.isBlank()) {
-            schoolList
-        } else {
-            schoolList.filter { school ->
-                school.name.contains(searchText, ignoreCase = true) || school.type.contains(
-                    searchText, ignoreCase = true
-                )
-            }
-        }
+        if (searchText.isBlank()) schoolList
+        else schoolList.filter { it.name.contains(searchText, ignoreCase = true) }
     }
 
-    // 对过滤后的列表进行分组
     val groupedSchools = remember(filteredSchoolList) {
         filteredSchoolList.groupBy { it.sortKey }.toSortedMap()
     }
+
+    var selectedSchool by remember { mutableStateOf<SchoolData?>(null) }
+    var showBottomSheet by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf("") }
-    val navigator = rememberWebViewNavigator()
+    var tableName by remember { mutableStateOf("") }
+    var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
     var webViewLoading by remember { mutableStateOf(false) }
-
-    val webViewState = rememberWebViewState(url)
-    val coroutineScope = rememberCoroutineScope()
-
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val navigator = rememberWebViewNavigator()
+    val webViewState = rememberWebViewState(url)
+
     Scaffold(
-        topBar = {
-            SmallTopAppBar(
-                title = "选择学校"
+        topBar = { SmallTopAppBar(title = "选择学校") }
+    ) { paddingValues ->
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp)) {
+            TextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                label = "搜素学校",
+                modifier = Modifier.fillMaxWidth()
             )
-        }) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp)
-        ) {
-            WindowDialog(
-                title = "导入失败",
-                summary = errorMessage,
-                show = showErrorDialog,
-                onDismissRequest = { showErrorDialog.value = false }) {
-                val dismiss = LocalWindowDialogState.current
-                TextButton(
-                    text = "我知道了", onClick = {
-                        dismiss.invoke()
-                    }, modifier = Modifier.fillMaxWidth()
-                )
-            }
 
-            WindowDialog(
-                title = "导入结果",
-                summary = resultMessage,
-                show = showResultDialog,
-                onDismissRequest = { showResultDialog.value = false }) {
-                val dismiss = LocalWindowDialogState.current
-                TextButton(
-                    text = "我知道了", onClick = {
-                        dismiss.invoke()
-                    }, modifier = Modifier.fillMaxWidth()
-                )
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                groupedSchools.forEach { (key, schools) ->
+                    item { SmallTitle(text = key) }
+                    items(schools) { school ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                selectedSchool = school
+                                url = school.url
+                                webViewState.content = WebContent.Url(school.url)
+                                showBottomSheet = true
+                            }
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(school.name)
+                                Text(school.type, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface)
+                            }
+                        }
+                    }
+                }
             }
+        }
 
+        if (showBottomSheet) {
             WindowBottomSheet(
-                show = showBottomSheet, title = "导入课表", onDismissRequest = {
-                    showBottomSheet.value = false
-                    importState = ImportState.Idle // 关闭时重置状态
-                    webViewLoading = false
-                }) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 20.dp)
-                ) {
-                    // WebView区域 - 固定高度
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
+                title = selectedSchool?.name ?: "导入",
+                show = remember { mutableStateOf(showBottomSheet) },
+                onDismissRequest = { showBottomSheet = false }
+            ) {
+                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         WebView(
                             state = webViewState,
                             modifier = Modifier.matchParentSize(),
                             navigator = navigator,
-                            captureBackPresses = false,
                             client = remember {
                                 object : AccompanistWebViewClient() {
-                                    override fun onPageStarted(
-                                        view: WebView,
-                                        url: String?,
-                                        favicon: android.graphics.Bitmap?
-                                    ) {
-                                        super.onPageStarted(view, url, favicon)
+                                    override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                                         webViewLoading = true
                                     }
-
                                     override fun onPageFinished(view: WebView, url: String?) {
-                                        super.onPageFinished(view, url)
                                         webViewLoading = false
-                                        CookieManager.getInstance().flush() // 强制同步 Cookie
-                                    }
-
-                                    override fun shouldInterceptRequest(
-                                        view: WebView?, request: WebResourceRequest?
-                                    ): WebResourceResponse? {
-                                        request?.requestHeaders?.let { headers ->
-                                            if (headers.containsKey("X-Requested-With")) {
-                                                val newHeaders = headers.toMutableMap()
-                                                newHeaders.remove("X-Requested-With")
-                                                newHeaders["sec-ch-ua"] = ApiClient.SEC_CH_UA
-                                                newHeaders["sec-ch-ua-mobile"] =
-                                                    ApiClient.SEC_CH_UA_MOBILE
-                                                newHeaders["sec-ch-ua-platform"] =
-                                                    ApiClient.SEC_CH_UA_PLATFORM
-                                            }
-                                        }
-                                        return super.shouldInterceptRequest(view, request)
+                                        CookieManager.getInstance().flush()
                                     }
                                 }
                             },
                             onCreated = { webView ->
                                 webViewRef = webView
-                                webView.settings.apply {
-                                    javaScriptEnabled = true
-                                    userAgentString = ApiClient.PUBLIC_UA
-                                }
-                                CookieManager.getInstance().apply {
-                                    setAcceptCookie(true)
-                                    setAcceptThirdPartyCookies(webView, true)
-                                }
-
-                                // 其他设置
-                                webView.settings.apply {
-                                    useWideViewPort = true
-                                    loadWithOverviewMode = true
-                                    domStorageEnabled = true
-                                    databaseEnabled = true
-                                    javaScriptCanOpenWindowsAutomatically = true
-                                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                    cacheMode = WebSettings.LOAD_DEFAULT
-                                }
-                            },
-                            onDispose = {
-                                webViewRef = null
-                            })
-
-                        // WebView加载进度条 - 悬浮在顶部
+                                webView.settings.javaScriptEnabled = true
+                                webView.settings.domStorageEnabled = true
+                            }
+                        )
                         if (webViewLoading) {
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.TopCenter)
-                            )
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
                         }
                     }
-
-                    // 状态显示区域 - 在WebView下方
-                    when (val state = importState) {
-                        is ImportState.Loading -> {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.size(12.dp))
-                                    Text("正在解析课表...")
-                                }
-                            }
-                        }
-
-                        is ImportState.Parsing -> {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.size(12.dp))
-                                    Text("正在上传课表...")
-                                }
-                            }
-                        }
-
-                        is ImportState.Success -> {}
-
-                        is ImportState.Error -> {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            "❌ ", color = MiuixTheme.colorScheme.error
-                                        )
-                                        Text(
-                                            "导入失败", color = MiuixTheme.colorScheme.error
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        state.message, fontSize = 12.sp
-                                    )
-                                }
-                            }
-                        }
-
-                        ImportState.Idle -> {}
-                    }
-
-                    TextField(
-                        value = tableName, onValueChange = { tableName = it }, label = "课表名称"
-                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 导入按钮
+                    TextField(value = tableName, onValueChange = { tableName = it }, label = "课表名称")
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Button(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                        enabled = importState !is ImportState.Loading && importState !is ImportState.Parsing && !webViewLoading,
+                        enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
                         onClick = {
                             if (tableName.isBlank()) {
-                                setErrorState("请先输入课表名称")
+                                Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
                             importState = ImportState.Loading
-
-                            val appId = HostCompat.getAppId()
-                            val serviceToken = HostCompat.getAccessToken()
-
-                            val deviceId = HostCompat.getDeviceId(context)
-
-                            if (serviceToken == null || deviceId == null) {
-                                setErrorState("无法获取服务令牌或设备ID")
-                                return@Button
-                            }
-                            webViewRef?.evaluateJavascript(
-                                "document.documentElement.outerHTML"
-                            ) { html ->
+                            webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
                                 coroutineScope.launch {
                                     try {
+                                        val appId = HostCompat.getAppId()
+                                        val serviceToken = HostCompat.getAccessToken()
+                                        val deviceId = HostCompat.getDeviceId(context)
+                                        if (serviceToken == null || deviceId == null) {
+                                            importState = ImportState.Error("获取令牌失败")
+                                            return@launch
+                                        }
+
                                         withContext(Dispatchers.IO) {
                                             ApiClient.parseCoursesStreaming(
                                                 html,
-                                                prefs.native().getString("api_key", ""),
-                                                prefs.native().getString("model_name", ""),
-                                                prefs.native().getString("api_url", ""),
+                                                HookEntry.prefs.getString("api_key", ""),
+                                                HookEntry.prefs.getString("model_name", ""),
+                                                HookEntry.prefs.getString("api_url", ""),
                                                 ApiClient.SYSTEM_PROMPT,
-                                                object : ParseCallback {
-                                                    override fun onUpdate(
-                                                        reasoning: String, content: String
-                                                    ) {
-                                                        // 可以在这里更新解析进度
-                                                    }
-
+                                                object : ApiClient.ParseCallback {
+                                                    override fun onUpdate(reasoning: String, content: String) {}
                                                     override fun onSuccess(result: ParseResult) {
                                                         coroutineScope.launch {
                                                             try {
                                                                 importState = ImportState.Parsing
-
-                                                                val ctid =
-                                                                    withContext(Dispatchers.IO) {
-                                                                        ApiClient.createTable(
-                                                                            tableName.trim(),
-                                                                            appId,
-                                                                            serviceToken,
-                                                                            deviceId
-                                                                        )
-                                                                    }
-
-                                                                YLog.debug("Create table result: $ctid")
-
-                                                                var successCount = 0
-                                                                var failCount = 0
-                                                                var errorMessages =
-                                                                    mutableListOf<String>()
-
-                                                                try {
-                                                                    withContext(Dispatchers.IO) {
-                                                                        ApiClient.uploadCoursesAll(
-                                                                            result.courses,
-                                                                            ctid,
-                                                                            appId,
-                                                                            serviceToken,
-                                                                            deviceId
-                                                                        )
-                                                                    }
-                                                                    successCount = result.courses.size
-                                                                } catch (e: Exception) {
-                                                                    YLog.error("Batch upload failed: ${e.message}")
-                                                                    failCount = result.courses.size
-                                                                    errorMessages.add(e.message ?: "未知错误")
+                                                                val ctid = withContext(Dispatchers.IO) {
+                                                                    ApiClient.createTable(tableName.trim(), appId, serviceToken, deviceId)
                                                                 }
-
-                                                                val message = buildString {
-                                                                    append("成功导入 $successCount 门课程")
-                                                                    if (failCount > 0) {
-                                                                        append("，$failCount 门失败")
-                                                                        if (errorMessages.isNotEmpty()) {
-                                                                            append(
-                                                                                "\n${
-                                                                                    errorMessages.take(
-                                                                                        3
-                                                                                    ).joinToString(
-                                                                                        "\n"
-                                                                                    )
-                                                                                }"
-                                                                            )
-                                                                            if (errorMessages.size > 3) {
-                                                                                append("\n...等${errorMessages.size}条错误")
-                                                                            }
-                                                                        }
-                                                                    }
+                                                                withContext(Dispatchers.IO) {
+                                                                    ApiClient.uploadCoursesAll(result.courses, ctid, appId, serviceToken, deviceId)
                                                                 }
-
-                                                                if (successCount > 0) {
-                                                                    importState =
-                                                                        ImportState.Success(message)
-                                                                    resultMessage = message
-                                                                    showResultDialog.value = true
-                                                                } else {
-                                                                    setErrorState(
-                                                                        "全部导入失败：${
-                                                                            errorMessages.firstOrNull() ?: "未知错误"
-                                                                        }"
-                                                                    )
-                                                                }
-
+                                                                importState = ImportState.Success("导入成功")
                                                             } catch (e: Exception) {
-                                                                YLog.error("Upload failed: ${e.message}")
-                                                                setErrorState("上传失败: ${e.message}")
+                                                                importState = ImportState.Error(e.message ?: "导入报错")
                                                             }
                                                         }
                                                     }
-
                                                     override fun onError(e: Exception) {
-                                                        coroutineScope.launch(Dispatchers.Main) {
-                                                            YLog.error(e)
-                                                            setErrorState("解析失败: ${e.message}")
-                                                        }
+                                                        importState = ImportState.Error(e.message ?: "解析报错")
                                                     }
-                                                })
+                                                }
+                                            )
                                         }
                                     } catch (e: Exception) {
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            YLog.error(e)
-                                            setErrorState("处理失败: ${e.message}")
-                                        }
+                                        importState = ImportState.Error(e.message ?: "未知错误")
                                     }
                                 }
-
                             }
-                        }) {
-                        Text(
-                            if (webViewLoading) "页面加载中..."
-                            else "开始导入",
-                            color = if (importState is ImportState.Loading || importState is ImportState.Parsing || webViewLoading) MiuixTheme.colorScheme.onPrimary.copy(
-                                alpha = 0.5f
-                            )
-                            else MiuixTheme.colorScheme.onPrimary
-                        )
+                        }
+                    ) {
+                        Text("提取并导入")
                     }
-                }
-            }
-
-            // 搜索框
-            TextField(
-                value = searchText, onValueChange = { searchText = it }, label = "检索学校"
-            )
-
-            // 学校列表
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                groupedSchools.forEach { (sortKey, schools) ->
-                    item {
-                        SmallTitle(
-                            text = sortKey
-                        )
-                    }
-
-                    items(schools) { school ->
-                        SuperArrow(
-                            title = school.name, onClick = {
-                                currentSchoolName = school.name
-                                url = school.url
-                                val importType = (context as Activity).intent.getStringExtra("type")
-                                YLog.debug(importType)
-                                if (importType == "jiaowu") {
-                                    val intent = Intent().apply {
-                                        component = ComponentName(
-                                            packageName,
-                                            context.proxyActivity()
-                                        )
-                                        val params = JSONObject().apply {
-                                            put("url", school.url)
-                                            put("title", "导入课程表")
-                                            put("titleColor", "#0D84FF")
-                                            put(
-                                                "text",
-                                                "请先在浏览器登录教务系统，定位到个人课程表页面后，点击一键导入"
-                                            )
-                                            put("textColor", "#0D84FF")
-                                            put("buttonText", "一键导入")
-                                            put("buttonTextColor", "#0D84FF")
-                                            put("buttonColor", "#d1e8ff")
-                                            put("backgroundColor", "#e7f3ff")
-                                            put("script", "(async function() {alert('没适配');})()")
-                                        }
-
-                                        putExtra("EXTRA_PARAMS", params.toString())
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-                                    }
-                                    context.startActivity(intent)
-
-                                } else {
-                                    showBottomSheet.value = true
-                                    importState = ImportState.Idle
-                                    webViewLoading = true
-                                }
-                            })
+                    
+                    if (importState is ImportState.Error) {
+                        Text((importState as ImportState.Error).message, color = MiuixTheme.colorScheme.error, fontSize = 12.sp)
+                    } else if (importState is ImportState.Success) {
+                        Text("✅ 导入成功", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
                     }
                 }
             }

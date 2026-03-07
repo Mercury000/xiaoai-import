@@ -33,7 +33,8 @@ import me.padi.xiaoai.R
 import me.padi.xiaoai.click.importCourseFormJw
 import me.padi.xiaoai.click.openContributorQQ
 import me.padi.xiaoai.click.queryScoreFormSchool
-import me.padi.xiaoai.hook.HookEntry.prefs
+import me.padi.xiaoai.hook.HookEntry
+import me.padi.xiaoai.proxyActivity
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -59,7 +60,7 @@ class ModuleScreen : BaseActivity() {
             MiuixTheme {
                 var showBottomSheet = remember { mutableStateOf(false) }
 
-                var url by remember { mutableStateOf(prefs.native().getString("debug_jw_url", "")) }
+                var url by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_url", "")) }
                 var javaScriptStr by remember { mutableStateOf("") }
                 val context = LocalContext.current
                 Scaffold { paddingValues ->
@@ -78,7 +79,7 @@ class ModuleScreen : BaseActivity() {
                                 val dismiss = LocalWindowBottomSheetState.current
                                 TextField(
                                     value = url,
-                                    onValueChange = { url = it },
+                                    onValueChange = { newValue: String -> url = newValue },
                                     label = "教务系统链接"
                                 )
                                 Spacer(Modifier.height(10.dp))
@@ -99,61 +100,14 @@ class ModuleScreen : BaseActivity() {
                                     Spacer(Modifier.width(16.dp))
                                     Button(
                                         modifier = Modifier.weight(1f), onClick = {
-                                            prefs.native().edit {
-                                                putString("debug_jw_url", url)
-                                            }
+                                            HookEntry.prefs.edit().putString("debug_jw_url", url).apply()
                                             dismiss?.invoke()
                                             (context as Activity).finish()
-                                            val intent = Intent().apply {
-                                                component = ComponentName(
-                                                    context.packageName,
-                                                    context.proxyActivity()
-                                                )
-                                                val params = JSONObject().apply {
-                                                    put(
-                                                        "url", url
-                                                    )
-                                                    put(
-                                                        "title", "导入课程表"
-                                                    )
-                                                    put(
-                                                        "titleColor", "#0D84FF"
-                                                    )
-                                                    put(
-                                                        "text",
-                                                        "请先在浏览器登录教务系统，定位到个人课程表页面后，点击一键导入"
-                                                    )
-                                                    put(
-                                                        "textColor", "#0D84FF"
-                                                    )
-                                                    put(
-                                                        "buttonText", "一键导入"
-                                                    )
-                                                    put(
-                                                        "buttonTextColor", "#0D84FF"
-                                                    )
-                                                    put(
-                                                        "buttonColor", "#d1e8ff"
-                                                    )
-                                                    put(
-                                                        "backgroundColor", "#e7f3ff"
-                                                    )
-                                                    put(
-                                                        "script", javaScriptStr
-                                                    )
-                                                }
-
-                                                putExtra(
-                                                    "EXTRA_PARAMS", params.toString()
-                                                )
-                                                addFlags(
-                                                    Intent.FLAG_ACTIVITY_NEW_TASK
-                                                )
-
+                                            val intent = Intent(context, WebViewScreen::class.java).apply {
+                                                putExtra("url", url)
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                             }
-                                            context.startActivity(
-                                                intent
-                                            )
+                                            context.startActivity(intent)
                                         }, colors = ButtonDefaults.buttonColorsPrimary()
                                     ) {
                                         Text(

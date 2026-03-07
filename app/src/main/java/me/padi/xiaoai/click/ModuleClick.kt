@@ -18,11 +18,15 @@ import me.padi.xiaoai.Course
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.OkHttpClientManager
 import me.padi.xiaoai.get
-import me.padi.xiaoai.hook.HookEntry.prefs
+import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
 import me.padi.xiaoai.screen.AiScreen
+import me.padi.xiaoai.screen.SchoolScreen
+import me.padi.xiaoai.screen.WebViewScreen
 import org.json.JSONArray
 import org.json.JSONObject
+import android.net.Uri
+import android.widget.Toast
 import top.sacz.xphelper.ext.toClass
 import java.io.IOException
 import kotlin.math.abs
@@ -167,7 +171,7 @@ fun importCourseFormJw(context: Context) {
                                 if (text == "拾光适配仓库") {
                                     handleShiguangImport(context, responseBody)
                                 } else {
-                                    handleCommonImport(context, text, responseBody)
+                                    handleCommonImport(context, text.toString(), responseBody)
                                 }
                             } catch (e: Exception) {
                                 YLog.debug("解析失败: ${e.message}")
@@ -285,24 +289,10 @@ private fun handleCommonImport(context: Context, type: String, responseBody: Str
 }
 
 private fun launchImportActivity(context: Context, url: String, title: String, text: String, script: String) {
-    val intent = Intent().apply {
-        component = ComponentName(context.packageName, context.proxyActivity())
-        val params = JSONObject().apply {
-            put("url", url)
-            put("title", title)
-            put("text", text)
-            put("script", "(async function () {${script}})();")
-            // 其他样式参数保留
-            put("titleColor", "#0D84FF")
-            put("textColor", "#0D84FF")
-            put("buttonText", "一键导入")
-            put("buttonTextColor", "#0D84FF")
-            put("buttonColor", "#d1e8ff")
-            put("backgroundColor", "#e7f3ff")
-        }
-        putExtra("EXTRA_PARAMS", params.toString())
-        // 关键点：对于超级小爱，我们通常使用 AiWebActivity，它接受 url 参数
+    val intent = Intent(context, WebViewScreen::class.java).apply {
         putExtra("url", url)
+        putExtra("title", title)
+        putExtra("script", "(async function () {${script}})();")
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     context.startActivity(intent)
@@ -360,3 +350,14 @@ fun queryScoreFormSchool(context: Context) {
 data class SchoolData(val name: String, val id: Long, val status: String, val url: String)
 data class ScoreData(val name: String, val type: String, val status: String, val url: String)
 data class SystemData(val name: String, val type: String, val status: String)
+
+fun openContributorQQ(context: Context, uin: String) {
+    val intent = Intent(Intent.ACTION_VIEW)
+    intent.data = Uri.parse("mqqwpa://im/chat?chat_type=wpa&uin=$uin")
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "未找到QQ", Toast.LENGTH_SHORT).show()
+    }
+}

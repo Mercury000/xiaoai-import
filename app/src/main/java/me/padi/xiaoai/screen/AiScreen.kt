@@ -26,7 +26,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import me.padi.xiaoai.hook.HookEntry.prefs
+import me.padi.xiaoai.hook.HookEntry
+import me.padi.xiaoai.proxyActivity
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -51,17 +52,15 @@ class AiScreen : BaseActivity() {
 
             // 从SharedPreferences读取保存的值
             var apiUrl by remember {
-                mutableStateOf(prefs.native().getString("api_url", ""))
+                mutableStateOf(HookEntry.prefs.getString("api_url", ""))
             }
             var modelName by remember {
-                mutableStateOf(prefs.native().getString("model_name", ""))
+                mutableStateOf(HookEntry.prefs.getString("model_name", ""))
             }
             var apiKey by remember {
-                mutableStateOf(prefs.native().getString("api_key", ""))
+                mutableStateOf(HookEntry.prefs.getString("api_key", ""))
             }
-
             val context = LocalContext.current
-            val uriHandler = LocalUriHandler.current
             val isAllFieldsFilled = remember(apiUrl, modelName, apiKey) {
                 apiUrl.isNotBlank() && modelName.isNotBlank() && apiKey.isNotBlank()
             }
@@ -85,12 +84,10 @@ class AiScreen : BaseActivity() {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 Spacer(Modifier.height(8.dp))
                                 TextField(
-                                    value = apiUrl, onValueChange = { newValue ->
+                                    value = apiUrl, onValueChange = { newValue: String ->
                                         apiUrl = newValue
                                         if (newValue.isNotBlank()) {
-                                            prefs.native().edit {
-                                                putString("api_url", newValue)
-                                            }
+                                            HookEntry.prefs.edit().putString("api_url", newValue).apply()
                                         }
                                     }, label = "Api地址"
                                 )
@@ -98,12 +95,10 @@ class AiScreen : BaseActivity() {
                                 Spacer(Modifier.height(8.dp))
 
                                 TextField(
-                                    value = modelName, onValueChange = { newValue ->
+                                    value = modelName, onValueChange = { newValue: String ->
                                         modelName = newValue
                                         if (newValue.isNotBlank()) {
-                                            prefs.native().edit {
-                                                putString("model_name", newValue)
-                                            }
+                                            HookEntry.prefs.edit().putString("model_name", newValue).apply()
                                         }
                                     }, label = "模型名称"
                                 )
@@ -112,29 +107,14 @@ class AiScreen : BaseActivity() {
 
                                 TextField(
                                     value = apiKey,
-                                    onValueChange = { newValue ->
+                                    onValueChange = { newValue: String ->
                                         apiKey = newValue
                                         if (newValue.isNotBlank()) {
-                                            prefs.native().edit {
-                                                putString("api_key", newValue)
-                                            }
+                                            HookEntry.prefs.edit().putString("api_key", newValue).apply()
                                         }
                                     },
-                                    label = "ApiKey",
-                                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                    trailingIcon = {
-                                        IconButton(
-                                            onClick = { passwordVisible = !passwordVisible },
-                                            modifier = Modifier.padding(end = 12.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = MiuixIcons.Rename,
-                                                tint = if (passwordVisible) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSecondaryContainer,
-                                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
-                                            )
-                                        }
-                                    })
+                                    label = "ApiKey"
+                                )
                                 Spacer(Modifier.height(8.dp))
                                 Button(
                                     modifier = Modifier.fillMaxWidth(), onClick = {

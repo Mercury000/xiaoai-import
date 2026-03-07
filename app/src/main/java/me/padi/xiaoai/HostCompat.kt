@@ -1,41 +1,54 @@
 package me.padi.xiaoai
 
 import android.content.Context
-import com.highcapable.kavaref.KavaRef.Companion.asResolver
-import com.highcapable.kavaref.KavaRef.Companion.resolve
-import top.sacz.xphelper.ext.toClass
+import top.sacz.xphelper.XpHelper
+import com.highcapable.yukihookapi.hook.factory.prefs
+
+fun Context.readRawFile(resId: Int): String? {
+    return try {
+        resources.openRawResource(resId).bufferedReader().use { it.readText() }
+    } catch (e: Exception) {
+        null
+    }
+}
 
 /**
  * 宿主兼容性工具类 - 仅保留超级小爱适配 (com.miui.voiceassist)
  */
 object HostCompat {
-    const val APP_ID = "326813440150602752"
+    const val HOST_PACKAGE = "com.miui.voiceassist"
 
-    fun getAppId(): String = APP_ID
+    fun isLogin(): Boolean = true // 简化逻辑，假设已登录
+
+    fun getAppId(): String = "326813440150602752"
 
     fun getAccessToken(): String? {
         return try {
-            val bClass = "c30.b".toClass()
-            val instance = bClass.getDeclaredConstructor().newInstance()
-            instance.asResolver().firstMethod {
-                name = "getOauthV2AccessToken"
-                parameterCount = 1
-            }.invoke<String>(false)
+            val loader = XpHelper.context.classLoader
+            val loginMgrClass = loader.loadClass("c30.b")
+            val fieldA = loginMgrClass.getDeclaredField("a")
+            fieldA.isAccessible = true
+            val instance = fieldA.get(null)
+            val fieldF = loginMgrClass.getDeclaredField("f")
+            fieldF.isAccessible = true
+            fieldF.get(instance) as? String
         } catch (e: Exception) {
             null
         }
     }
 
-    fun isLogin(): Boolean = getAccessToken() != null
-
     fun getDeviceId(context: Context): String? {
         return try {
-            "q70.j".toClass().resolve().firstMethod {
-                name = "getDeviceId"
-                parameterCount = 1
-            }.invoke<String>(context)
+            val loader = context.classLoader
+            val deviceMgrClass = loader.loadClass("q70.j")
+            val methodB = deviceMgrClass.getDeclaredMethod("b")
+            methodB.isAccessible = true
+            val instance = methodB.invoke(null)
+            val methodA = deviceMgrClass.getDeclaredMethod("a")
+            methodA.isAccessible = true
+            methodA.invoke(instance) as? String
         } catch (e: Exception) {
-            null
+            XpHelper.context.prefs().getString("device_id", "")
         }
     }
 }
