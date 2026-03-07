@@ -29,6 +29,20 @@ public class ApiClient {
     public static final String SEC_CH_UA_MOBILE = "?1";
     public static final String SEC_CH_UA_PLATFORM = "\"Android\"";
 
+    private static final String NEW_APP_ID = "326813440150602752";
+
+    private static String buildBaseUrl(String appId) {
+        return NEW_APP_ID.equals(appId) ? "https://i.xiaomixiaoai.com" : "https://i.ai.mi.com";
+    }
+
+    private static String buildSourceName(String appId) {
+        return NEW_APP_ID.equals(appId) ? "course-app-miui" : "course-app-aiSchedule";
+    }
+
+    private static String buildXRequestedWith(String appId) {
+        return NEW_APP_ID.equals(appId) ? "com.miui.voiceassist" : "com.xiaomi.aischedule";
+    }
+
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(300, TimeUnit.SECONDS)
@@ -299,28 +313,39 @@ public class ApiClient {
                     .put("day", course.day)
                     .put("sections", course.sections)
                     .put("style", course.style != null ? course.style : COLOR_PRESETS[0])
-                    .put("weeks", course.weeks);
+                    .put("weeks", course.weeks)
+                    .put("extend", "");
             courseArray.put(courseObj);
         }
 
         JSONObject body = new JSONObject()
                 .put("ctId", ctId)
                 .put("courses", courseArray)
-                .put("sourceName", "course-app-aiSchedule");
+                .put("sourceName", buildSourceName(appId));
 
         String requestId = UUID.randomUUID().toString().replace("-", "").toUpperCase();
-        Request req = new Request.Builder()
-                .url("https://i.ai.mi.com/course-multi-auth/courseInfos")
+        Request.Builder reqBuilder = new Request.Builder()
+                .url(buildBaseUrl(appId) + "/course-multi-auth/courseInfos")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("RequestId", requestId)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36 AgentWeb/4.1.3")
-                .header("Origin", "https://i.ai.mi.com")
-                .header("X-Requested-With", "com.xiaomi.aischedule")
-                .header("Referer", "https://i.ai.mi.com/h5/precache/ai-schedule/")
-                .post(RequestBody.create(body.toString(), JSON_TYPE))
-                .build();
+                .header("Origin", buildBaseUrl(appId))
+                .header("X-Requested-With", buildXRequestedWith(appId))
+                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
+                .post(RequestBody.create(body.toString(), JSON_TYPE));
+
+        if (NEW_APP_ID.equals(appId)) {
+            reqBuilder.header("sec-ch-ua", SEC_CH_UA)
+                      .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
+                      .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
+                      .header("Access-Control-Allow-Origin", "true")
+                      .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917");
+        } else {
+            reqBuilder.header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36 AgentWeb/4.1.3");
+        }
+
+        Request req = reqBuilder.build();
 
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
@@ -346,7 +371,11 @@ public class ApiClient {
         try {
             String scopeJson = "{\"d\":\"" + deviceId + "\"}";
             String scopeData = Base64.encodeToString(scopeJson.getBytes("UTF-8"), Base64.NO_WRAP);
-            return "AO-TOKEN-V1 dev_app_id:" + appId + ",access_token:" + serviceToken + ",scope_data:" + scopeData;
+            if (NEW_APP_ID.equals(appId)) {
+                return "DO-TOKEN-V1 app_id:" + appId + ",scope_data:" + scopeData + ",access_token:" + serviceToken;
+            } else {
+                return "AO-TOKEN-V1 dev_app_id:" + appId + ",access_token:" + serviceToken + ",scope_data:" + scopeData;
+            }
         } catch (Exception e) {
             return "";
         }
@@ -356,14 +385,14 @@ public class ApiClient {
      * 获取课表列表
      */
     public static List<CourseTable> fetchTables(String appId, String serviceToken, String deviceId) throws Exception {
-        String url = "https://i.ai.mi.com/course-multi-auth/tables?requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=course-app-aiSchedule";
+        String url = buildBaseUrl(appId) + "/course-multi-auth/tables?requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + buildSourceName(appId);
         Request req = new Request.Builder()
                 .url(url)
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Accept", "*/*")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36")
-                .header("X-Requested-With", "com.xiaomi.aischedule")
-                .header("Referer", "https://i.ai.mi.com/h5/precache/ai-schedule/")
+                .header("X-Requested-With", buildXRequestedWith(appId))
+                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
                 .get()
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -396,14 +425,14 @@ public class ApiClient {
      * 查询某课表的详细配置及现有课程ID
      */
     public static void fetchTableDetail(CourseTable table, String appId, String serviceToken, String deviceId) throws Exception {
-        String url = "https://i.ai.mi.com/course-multi-auth/table?ctId=" + table.id + "&requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=course-app-aiSchedule";
+        String url = buildBaseUrl(appId) + "/course-multi-auth/table?ctId=" + table.id + "&requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + buildSourceName(appId);
         Request req = new Request.Builder()
                 .url(url)
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Accept", "*/*")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36")
-                .header("X-Requested-With", "com.xiaomi.aischedule")
-                .header("Referer", "https://i.ai.mi.com/h5/precache/ai-schedule/")
+                .header("X-Requested-With", buildXRequestedWith(appId))
+                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
                 .get()
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -429,13 +458,13 @@ public class ApiClient {
      * 删除单条课程
      */
     public static void deleteCourse(long ctId, long cId, String appId, String serviceToken, String deviceId) throws Exception {
-        JSONObject body = new JSONObject().put("ctId", ctId).put("cId", cId).put("sourceName", "course-app-aiSchedule");
+        JSONObject body = new JSONObject().put("ctId", ctId).put("cId", cId).put("sourceName", buildSourceName(appId));
         Request req = new Request.Builder()
-                .url("https://i.ai.mi.com/course-multi-auth/courseInfo")
+                .url(buildBaseUrl(appId) + "/course-multi-auth/courseInfo")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
-                .header("X-Requested-With", "com.xiaomi.aischedule")
-                .header("Referer", "https://i.ai.mi.com/h5/precache/ai-schedule/")
+                .header("X-Requested-With", buildXRequestedWith(appId))
+                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
                 .delete(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -448,15 +477,26 @@ public class ApiClient {
      * 新建课表，返回 ctId
      */
     public static long createTable(String name, String appId, String serviceToken, String deviceId) throws Exception {
-        JSONObject body = new JSONObject().put("name", name).put("current", 0).put("sourceName", "course-app-aiSchedule");
-        Request req = new Request.Builder()
-                .url("https://i.ai.mi.com/course-multi-auth/table")
+        JSONObject body = new JSONObject().put("name", name).put("current", 0).put("sourceName", buildSourceName(appId));
+        Request.Builder reqBuilder = new Request.Builder()
+                .url(buildBaseUrl(appId) + "/course-multi-auth/table")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
-                .header("X-Requested-With", "com.xiaomi.aischedule")
-                .header("Referer", "https://i.ai.mi.com/h5/precache/ai-schedule/")
-                .post(RequestBody.create(body.toString(), JSON_TYPE))
-                .build();
+                .header("X-Requested-With", buildXRequestedWith(appId))
+                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
+                .post(RequestBody.create(body.toString(), JSON_TYPE));
+
+        if (NEW_APP_ID.equals(appId)) {
+            reqBuilder.header("sec-ch-ua", SEC_CH_UA)
+                      .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
+                      .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
+                      .header("Access-Control-Allow-Origin", "true")
+                      .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917");
+        } else {
+            reqBuilder.header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36 AgentWeb/4.1.3");
+        }
+
+        Request req = reqBuilder.build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
             if (!resp.isSuccessful())
@@ -534,13 +574,13 @@ public class ApiClient {
         JSONObject body = new JSONObject()
                 .put("ctId", ctId).put("name", name)
                 .put("setting", merged)
-                .put("sourceName", "course-app-aiSchedule");
+                .put("sourceName", buildSourceName(appId));
         Request req = new Request.Builder()
-                .url("https://i.ai.mi.com/course-multi-auth/table")
+                .url(buildBaseUrl(appId) + "/course-multi-auth/table")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
-                .header("X-Requested-With", "com.xiaomi.aischedule")
-                .header("Referer", "https://i.ai.mi.com/h5/precache/ai-schedule/")
+                .header("X-Requested-With", buildXRequestedWith(appId))
+                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
                 .put(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -556,16 +596,16 @@ public class ApiClient {
         JSONObject body = new JSONObject()
                 .put("fromCtId", fromCtId)
                 .put("toCtId", toCtId)
-                .put("sourceName", "course-app-miui");
+                .put("sourceName", buildSourceName(appId));
         Request req = new Request.Builder()
-                .url("https://i.xiaomixiaoai.com/course-multi-auth/table_switch")
+                .url(buildBaseUrl(appId) + "/course-multi-auth/table_switch")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36")
-                .header("Origin", "https://i.xiaomixiaoai.com")
-                .header("X-Requested-With", "com.miui.voiceassist")
-                .header("Referer", "https://i.xiaomixiaoai.com/h5/precache/ai-schedule/")
+                .header("Origin", buildBaseUrl(appId))
+                .header("X-Requested-With", buildXRequestedWith(appId))
+                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
                 .post(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {

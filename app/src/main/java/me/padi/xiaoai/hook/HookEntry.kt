@@ -32,5 +32,9 @@ class HookEntry : IYukiHookXposedInit {
         loadApp("com.xiaomi.aischedule") {
             loadHooker(MainHook)
         }
+        loadApp("com.miui.voiceassist") {
+            loadHooker(VoiceAssistHook)
+            loadHooker(WebViewHook)
+        }
     }
 }

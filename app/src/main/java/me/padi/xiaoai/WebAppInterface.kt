@@ -42,22 +42,17 @@ class WebAppInterface(private val context: Context) {
         val intent = Intent(context, ScoreScreen::class.java)
         intent.putExtra("json", json)
         intent.putExtra(
-            "proxy_target_activity", "com.xiaomi.aischedule.activity.DeleteAccountActivity"
+            "proxy_target_activity", context.proxyActivity()
         )
         context.startActivity(intent)
     }
 
     @JavascriptInterface
     fun navSchoolScreen() {
-        if ("a.h.g.h".toClass().resolve().firstMethod {
-                name = "getInstance"
-                parameterCount = 0
-            }.invoke()?.asResolver()?.firstMethod {
-                name = "isLogin"
-            }?.invoke<Boolean>() == true) {
+        if (HostCompat.isLogin()) {
             val intent = Intent(context, ModuleScreen::class.java)
             intent.putExtra(
-                "proxy_target_activity", "com.xiaomi.aischedule.activity.DeleteAccountActivity"
+                "proxy_target_activity", context.proxyActivity()
             )
             context.startActivity(intent)
         } else {
@@ -66,4 +61,9 @@ class WebAppInterface(private val context: Context) {
             ).show()
         }
     }
+}
+
+fun Context.proxyActivity(): String = when (packageName) {
+    "com.miui.voiceassist" -> "com.xiaomi.voiceassistant.web.container.AiWebActivity"
+    else -> "com.xiaomi.aischedule.activity.DeleteAccountActivity"
 }

@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.padi.xiaoai.ApiClient
 import me.padi.xiaoai.ApiClient.ParseCallback
+import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
 import me.padi.xiaoai.R
 import me.padi.xiaoai.hook.MainHook.prefs
@@ -395,27 +396,10 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                             }
                             importState = ImportState.Loading
 
-                            val appId = "2882303761518539170"
-                            val serviceToken = try {
-                                "a.h.g.h".toClass().resolve().firstMethod {
-                                    name = "getInstance"
-                                    parameterCount = 0
-                                }.invoke()?.asResolver()?.firstMethod {
-                                    name = "getAccessToken"
-                                }?.invoke<String>()
-                            } catch (e: Exception) {
-                                YLog.error("Failed to get service token: ${e.message}")
-                                null
-                            }
+                            val appId = HostCompat.getAppId()
+                            val serviceToken = HostCompat.getAccessToken()
 
-                            val deviceId = try {
-                                "a.h.a.j.m".toClass().resolve().firstMethod {
-                                    name = "getDeviceId"
-                                }.invoke<String>()
-                            } catch (e: Exception) {
-                                YLog.error("Failed to get device id: ${e.message}")
-                                null
-                            }
+                            val deviceId = HostCompat.getDeviceId(context)
 
                             if (serviceToken == null || deviceId == null) {
                                 setErrorState("无法获取服务令牌或设备ID")
