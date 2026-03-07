@@ -29,19 +29,10 @@ public class ApiClient {
     public static final String SEC_CH_UA_MOBILE = "?1";
     public static final String SEC_CH_UA_PLATFORM = "\"Android\"";
 
-    private static final String NEW_APP_ID = "326813440150602752";
-
-    private static String buildBaseUrl(String appId) {
-        return NEW_APP_ID.equals(appId) ? "https://i.xiaomixiaoai.com" : "https://i.ai.mi.com";
-    }
-
-    private static String buildSourceName(String appId) {
-        return NEW_APP_ID.equals(appId) ? "course-app-miui" : "course-app-aiSchedule";
-    }
-
-    private static String buildXRequestedWith(String appId) {
-        return NEW_APP_ID.equals(appId) ? "com.miui.voiceassist" : "com.xiaomi.aischedule";
-    }
+    private static final String APP_ID = "326813440150602752";
+    private static final String BASE_URL = "https://i.xiaomixiaoai.com";
+    private static final String SOURCE_NAME = "course-app-miui";
+    private static final String X_REQUESTED_WITH = "com.miui.voiceassist";
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -110,9 +101,6 @@ public class ApiClient {
         void onError(Exception e);
     }
 
-    /**
-     * 调用 AI 接口解析课表 HTML 并支持流式返回
-     */
     public static void parseCoursesStreaming(String html, String apiKey, String model, String baseUrl, String systemPrompt, ParseCallback callback) {
         try {
             if (html.length() > 150000) html = html.substring(0, 150000);
@@ -178,8 +166,6 @@ public class ApiClient {
                 }
 
                 String aiResponseContent = fullContent.toString().trim();
-
-                // 解决大模型有时返回 schedule.sections 时包裹了双引号但内部却未转义引发的 JSON 语法崩溃
                 aiResponseContent = repairAiJson(aiResponseContent);
 
                 JSONObject fullResponseJson;
@@ -205,9 +191,6 @@ public class ApiClient {
         }
     }
 
-    /**
-     * 核心解析引擎：支持 AI 解析和手动注入共用一套逻辑，确保校验规则、纠缠机制、默认值完全一致
-     */
     public static ParseResult parseJsonToResult(JSONObject fullResponseJson) throws Exception {
         ParseResult parseResult = new ParseResult();
         List<Course> list = new ArrayList<>();
@@ -264,7 +247,6 @@ public class ApiClient {
                 c.style = styleMap.get(c.name);
                 list.add(c);
             } else {
-                // 即使缺失了name这种终极必填字段，我们也放进列表里，让 UI 标红，告诉用户这节课缺失严重
                 c.name = "(未命名课程)";
                 c.sanitizeAndValidate();
                 c.isInvalid = true;
@@ -299,9 +281,6 @@ public class ApiClient {
         return parseResult;
     }
 
-    /**
-     * 批量上传课程到小爱课表（POST /course-multi-auth/courseInfos）
-     */
     public static void uploadCoursesAll(List<Course> courses, long ctId, String appId,
                                         String serviceToken, String deviceId) throws Exception {
         JSONArray courseArray = new JSONArray();
@@ -321,31 +300,25 @@ public class ApiClient {
         JSONObject body = new JSONObject()
                 .put("ctId", ctId)
                 .put("courses", courseArray)
-                .put("sourceName", buildSourceName(appId));
+                .put("sourceName", SOURCE_NAME);
 
         String requestId = UUID.randomUUID().toString().replace("-", "").toUpperCase();
-        Request.Builder reqBuilder = new Request.Builder()
-                .url(buildBaseUrl(appId) + "/course-multi-auth/courseInfos")
+        Request req = new Request.Builder()
+                .url(BASE_URL + "/course-multi-auth/courseInfos")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("RequestId", requestId)
-                .header("Origin", buildBaseUrl(appId))
-                .header("X-Requested-With", buildXRequestedWith(appId))
-                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
-                .post(RequestBody.create(body.toString(), JSON_TYPE));
-
-        if (NEW_APP_ID.equals(appId)) {
-            reqBuilder.header("sec-ch-ua", SEC_CH_UA)
-                      .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
-                      .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
-                      .header("Access-Control-Allow-Origin", "true")
-                      .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917");
-        } else {
-            reqBuilder.header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36 AgentWeb/4.1.3");
-        }
-
-        Request req = reqBuilder.build();
+                .header("Origin", BASE_URL)
+                .header("X-Requested-With", X_REQUESTED_WITH)
+                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
+                .header("sec-ch-ua", SEC_CH_UA)
+                .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
+                .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
+                .header("Access-Control-Allow-Origin", "true")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917")
+                .post(RequestBody.create(body.toString(), JSON_TYPE))
+                .build();
 
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
@@ -371,28 +344,21 @@ public class ApiClient {
         try {
             String scopeJson = "{\"d\":\"" + deviceId + "\"}";
             String scopeData = Base64.encodeToString(scopeJson.getBytes("UTF-8"), Base64.NO_WRAP);
-            if (NEW_APP_ID.equals(appId)) {
-                return "DO-TOKEN-V1 app_id:" + appId + ",scope_data:" + scopeData + ",access_token:" + serviceToken;
-            } else {
-                return "AO-TOKEN-V1 dev_app_id:" + appId + ",access_token:" + serviceToken + ",scope_data:" + scopeData;
-            }
+            return "DO-TOKEN-V1 app_id:" + appId + ",scope_data:" + scopeData + ",access_token:" + serviceToken;
         } catch (Exception e) {
             return "";
         }
     }
 
-    /**
-     * 获取课表列表
-     */
     public static List<CourseTable> fetchTables(String appId, String serviceToken, String deviceId) throws Exception {
-        String url = buildBaseUrl(appId) + "/course-multi-auth/tables?requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + buildSourceName(appId);
+        String url = BASE_URL + "/course-multi-auth/tables?requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + SOURCE_NAME;
         Request req = new Request.Builder()
                 .url(url)
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Accept", "*/*")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36")
-                .header("X-Requested-With", buildXRequestedWith(appId))
-                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
+                .header("X-Requested-With", X_REQUESTED_WITH)
+                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
                 .get()
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -421,18 +387,15 @@ public class ApiClient {
         }
     }
 
-    /**
-     * 查询某课表的详细配置及现有课程ID
-     */
     public static void fetchTableDetail(CourseTable table, String appId, String serviceToken, String deviceId) throws Exception {
-        String url = buildBaseUrl(appId) + "/course-multi-auth/table?ctId=" + table.id + "&requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + buildSourceName(appId);
+        String url = BASE_URL + "/course-multi-auth/table?ctId=" + table.id + "&requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + SOURCE_NAME;
         Request req = new Request.Builder()
                 .url(url)
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Accept", "*/*")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36")
-                .header("X-Requested-With", buildXRequestedWith(appId))
-                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
+                .header("X-Requested-With", X_REQUESTED_WITH)
+                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
                 .get()
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -454,17 +417,14 @@ public class ApiClient {
         }
     }
 
-    /**
-     * 删除单条课程
-     */
     public static void deleteCourse(long ctId, long cId, String appId, String serviceToken, String deviceId) throws Exception {
-        JSONObject body = new JSONObject().put("ctId", ctId).put("cId", cId).put("sourceName", buildSourceName(appId));
+        JSONObject body = new JSONObject().put("ctId", ctId).put("cId", cId).put("sourceName", SOURCE_NAME);
         Request req = new Request.Builder()
-                .url(buildBaseUrl(appId) + "/course-multi-auth/courseInfo")
+                .url(BASE_URL + "/course-multi-auth/courseInfo")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
-                .header("X-Requested-With", buildXRequestedWith(appId))
-                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
+                .header("X-Requested-With", X_REQUESTED_WITH)
+                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
                 .delete(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -473,30 +433,21 @@ public class ApiClient {
         }
     }
 
-    /**
-     * 新建课表，返回 ctId
-     */
     public static long createTable(String name, String appId, String serviceToken, String deviceId) throws Exception {
-        JSONObject body = new JSONObject().put("name", name).put("current", 0).put("sourceName", buildSourceName(appId));
-        Request.Builder reqBuilder = new Request.Builder()
-                .url(buildBaseUrl(appId) + "/course-multi-auth/table")
+        JSONObject body = new JSONObject().put("name", name).put("current", 0).put("sourceName", SOURCE_NAME);
+        Request req = new Request.Builder()
+                .url(BASE_URL + "/course-multi-auth/table")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
-                .header("X-Requested-With", buildXRequestedWith(appId))
-                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
-                .post(RequestBody.create(body.toString(), JSON_TYPE));
-
-        if (NEW_APP_ID.equals(appId)) {
-            reqBuilder.header("sec-ch-ua", SEC_CH_UA)
-                      .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
-                      .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
-                      .header("Access-Control-Allow-Origin", "true")
-                      .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917");
-        } else {
-            reqBuilder.header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36 AgentWeb/4.1.3");
-        }
-
-        Request req = reqBuilder.build();
+                .header("X-Requested-With", X_REQUESTED_WITH)
+                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
+                .header("sec-ch-ua", SEC_CH_UA)
+                .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
+                .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
+                .header("Access-Control-Allow-Origin", "true")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917")
+                .post(RequestBody.create(body.toString(), JSON_TYPE))
+                .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
             if (!resp.isSuccessful())
@@ -504,7 +455,7 @@ public class ApiClient {
             JSONObject json = new JSONObject(raw);
             if (json.optInt("code", -1) != 0)
                 throw new Exception(json.optString("desc", "新建课表响应错误"));
-            return json.getLong("data"); // created ctId
+            return json.getLong("data");
         }
     }
 
@@ -516,28 +467,22 @@ public class ApiClient {
         JSONObject origObj = new JSONObject(originalSettingStr);
         JSONObject merged = new JSONObject();
 
-        // 1. Maintain Date Info from the Newly created table (origObj)
         if (origObj.has("presentWeek")) merged.put("presentWeek", origObj.get("presentWeek"));
         if (origObj.has("totalWeek")) merged.put("totalWeek", origObj.get("totalWeek"));
         if (origObj.has("startSemester")) merged.put("startSemester", origObj.get("startSemester"));
-
-        // Use the new table's setting ID! (If we use the old one, the server ignores the update)
         if (origObj.has("id")) merged.put("id", origObj.get("id"));
 
-        // 2. Clone styling and layout sections from the Old table (sourceObj)
         String[] cloneKeys = {"isWeekend", "morningNum", "afternoonNum", "nightNum", "speak", "weekStart"};
         for (String k : cloneKeys) {
             if (sourceObj.has(k)) merged.put(k, sourceObj.get(k));
         }
 
-        // Handle sections specifically (API expects 'sections' but fetch might return 'sectionTimes')
         if (sourceObj.has("sections")) {
             merged.put("sections", sourceObj.get("sections"));
         } else if (sourceObj.has("sectionTimes")) {
             merged.put("sections", sourceObj.get("sectionTimes"));
         }
 
-        // 3. Override styling layout details with user's explicitly extracted schedule (if passed and permitted)
         if (customSchedule != null) {
             if (customSchedule.morningNum != null)
                 merged.put("morningNum", customSchedule.morningNum);
@@ -548,12 +493,10 @@ public class ApiClient {
                 merged.put("sections", customSchedule.sections);
         }
 
-        // Handle school empty values (API expects "{}" instead of "")
         String school = sourceObj.optString("school", "{}");
         if (school.isEmpty()) school = "{}";
         merged.put("school", school);
 
-        // 3. Merge inside `extend`
         JSONObject mergedExt = new JSONObject();
         try {
             mergedExt = new JSONObject(origObj.optString("extend", "{}"));
@@ -574,13 +517,13 @@ public class ApiClient {
         JSONObject body = new JSONObject()
                 .put("ctId", ctId).put("name", name)
                 .put("setting", merged)
-                .put("sourceName", buildSourceName(appId));
+                .put("sourceName", SOURCE_NAME);
         Request req = new Request.Builder()
-                .url(buildBaseUrl(appId) + "/course-multi-auth/table")
+                .url(BASE_URL + "/course-multi-auth/table")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
-                .header("X-Requested-With", buildXRequestedWith(appId))
-                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
+                .header("X-Requested-With", X_REQUESTED_WITH)
+                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
                 .put(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -589,23 +532,20 @@ public class ApiClient {
         }
     }
 
-    /**
-     * 切换默认课表
-     */
     public static void switchTable(long fromCtId, long toCtId, String appId, String serviceToken, String deviceId) throws Exception {
         JSONObject body = new JSONObject()
                 .put("fromCtId", fromCtId)
                 .put("toCtId", toCtId)
-                .put("sourceName", buildSourceName(appId));
+                .put("sourceName", SOURCE_NAME);
         Request req = new Request.Builder()
-                .url(buildBaseUrl(appId) + "/course-multi-auth/table_switch")
+                .url(BASE_URL + "/course-multi-auth/table_switch")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36")
-                .header("Origin", buildBaseUrl(appId))
-                .header("X-Requested-With", buildXRequestedWith(appId))
-                .header("Referer", buildBaseUrl(appId) + "/h5/precache/ai-schedule/")
+                .header("Origin", BASE_URL)
+                .header("X-Requested-With", X_REQUESTED_WITH)
+                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
                 .post(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
@@ -633,12 +573,8 @@ public class ApiClient {
         return msg;
     }
 
-    /**
-     * 修复 JSON 文本中强行用双引号包裹数组、但内部未转义导致崩溃的问题
-     */
     public static String repairAiJson(String json) {
         if (json == null || json.isEmpty()) return json;
-        // 兼容 "sections" 或 "sectionTimes" 或者其他强行塞了对象数组的字符串
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([a-zA-Z0-9_]+)\"\\s*:\\s*\"\\s*(\\[\\s*\\{.*?\\}\\s*\\])\\s*\"", java.util.regex.Pattern.DOTALL).matcher(json);
         StringBuffer sb = new StringBuffer();
         while (m.find()) {

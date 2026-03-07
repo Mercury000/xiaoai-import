@@ -26,7 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import me.padi.xiaoai.hook.MainHook.prefs
+import me.padi.xiaoai.hook.HookEntry.prefs
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -142,7 +142,7 @@ class AiScreen : BaseActivity() {
                                             val intent = Intent(context, SchoolScreen::class.java)
                                             intent.putExtra(
                                                 "proxy_target_activity",
-                                                "com.xiaomi.aischedule.activity.DeleteAccountActivity"
+                                                context.proxyActivity()
                                             )
                                             context.startActivity(intent)
                                         } else {

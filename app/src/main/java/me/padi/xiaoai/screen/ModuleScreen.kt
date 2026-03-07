@@ -33,7 +33,7 @@ import me.padi.xiaoai.R
 import me.padi.xiaoai.click.importCourseFormJw
 import me.padi.xiaoai.click.openContributorQQ
 import me.padi.xiaoai.click.queryScoreFormSchool
-import me.padi.xiaoai.hook.MainHook.prefs
+import me.padi.xiaoai.hook.HookEntry.prefs
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -106,8 +106,8 @@ class ModuleScreen : BaseActivity() {
                                             (context as Activity).finish()
                                             val intent = Intent().apply {
                                                 component = ComponentName(
-                                                    "com.xiaomi.aischedule",
-                                                    "com.xiaomi.aischedule.activity.ScheduleEducationalImportActivity"
+                                                    context.packageName,
+                                                    context.proxyActivity()
                                                 )
                                                 val params = JSONObject().apply {
                                                     put(

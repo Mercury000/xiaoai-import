@@ -30,7 +30,7 @@ import com.kevinnzou.web.WebView
 import com.kevinnzou.web.rememberWebViewNavigator
 import com.kevinnzou.web.rememberWebViewState
 import me.padi.xiaoai.ApiClient
-import me.padi.xiaoai.hook.MainHook.prefs
+import me.padi.xiaoai.hook.HookEntry.prefs
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.FabPosition
 import top.yukonga.miuix.kmp.basic.FloatingActionButton

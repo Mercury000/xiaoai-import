@@ -51,7 +51,7 @@ import me.padi.xiaoai.ApiClient.ParseCallback
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
 import me.padi.xiaoai.R
-import me.padi.xiaoai.hook.MainHook.prefs
+import me.padi.xiaoai.hook.HookEntry.prefs
 import org.json.JSONArray
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
@@ -560,8 +560,8 @@ fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                 if (importType == "jiaowu") {
                                     val intent = Intent().apply {
                                         component = ComponentName(
-                                            "com.xiaomi.aischedule",
-                                            "com.xiaomi.aischedule.activity.ScheduleEducationalImportActivity"
+                                            packageName,
+                                            context.proxyActivity()
                                         )
                                         val params = JSONObject().apply {
                                             put("url", school.url)

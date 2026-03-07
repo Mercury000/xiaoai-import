@@ -63,7 +63,4 @@ class WebAppInterface(private val context: Context) {
     }
 }
 
-fun Context.proxyActivity(): String = when (packageName) {
-    "com.miui.voiceassist" -> "com.xiaomi.voiceassistant.web.container.AiWebActivity"
-    else -> "com.xiaomi.aischedule.activity.DeleteAccountActivity"
-}
+fun Context.proxyActivity(): String = "com.xiaomi.voiceassistant.web.container.AiWebActivity"
