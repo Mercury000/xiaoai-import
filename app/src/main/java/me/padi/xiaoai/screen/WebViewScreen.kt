@@ -10,6 +10,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,12 +20,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -70,6 +75,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private data class AlertPendingState(val data: AlertDialogData, val callback: (Boolean) -> Unit)
+private data class PromptPendingState(val data: PromptDialogData, val callback: (String?) -> Unit, val errorCallback: (String) -> Unit)
+private data class SelectionPendingState(val data: SingleSelectionDialogData, val callback: (Int?) -> Unit)
+
 class WebViewScreen : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,11 +111,24 @@ private fun WebViewScreenContent(intent: Intent) {
     val coroutineScope = rememberCoroutineScope()
     val webViewState = rememberWebViewState(url)
 
+    // 对话框状态（用显式 MutableState ref 以便在 remember 闭包中捕获）
+    val alertStateRef: MutableState<AlertPendingState?> = remember { mutableStateOf(null) }
+    val promptStateRef: MutableState<PromptPendingState?> = remember { mutableStateOf(null) }
+    val selectionStateRef: MutableState<SelectionPendingState?> = remember { mutableStateOf(null) }
+    val promptInputRef: MutableState<String> = remember { mutableStateOf("") }
+
     val bridgeCallback = remember {
         object : BridgeCallback {
-            override fun onShowAlert(data: AlertDialogData, callback: (Boolean) -> Unit) {}
-            override fun onShowPrompt(data: PromptDialogData, callback: (String?) -> Unit, errorCallback: (String) -> Unit) {}
-            override fun onShowSingleSelection(data: SingleSelectionDialogData, callback: (Int?) -> Unit) {}
+            override fun onShowAlert(data: AlertDialogData, callback: (Boolean) -> Unit) {
+                alertStateRef.value = AlertPendingState(data, callback)
+            }
+            override fun onShowPrompt(data: PromptDialogData, callback: (String?) -> Unit, errorCallback: (String) -> Unit) {
+                promptInputRef.value = data.defaultText
+                promptStateRef.value = PromptPendingState(data, callback, errorCallback)
+            }
+            override fun onShowSingleSelection(data: SingleSelectionDialogData, callback: (Int?) -> Unit) {
+                selectionStateRef.value = SelectionPendingState(data, callback)
+            }
             override fun onSaveImportedCourses(coursesJson: String, callback: (Boolean, String?) -> Unit) {
                 importState = ImportState.Parsing
                 coroutineScope.launch(Dispatchers.IO) {
@@ -127,8 +149,11 @@ private fun WebViewScreenContent(intent: Intent) {
                             c.position = courseJson.optString("location", courseJson.optString("position", "")).trim()
                             c.day = courseJson.optInt("weekday", courseJson.optInt("day", 1))
                             
+                            val isCustomTime = courseJson.optBoolean("isCustomTime", false)
                             val sectionsArr = courseJson.optJSONArray("sections")
-                            c.sections = if (sectionsArr != null) {
+                            c.sections = if (isCustomTime) {
+                                "1"  // 自定义时间课程，小爱接口不支持，用最小节次占位
+                            } else if (sectionsArr != null) {
                                 // zf.js / 拾光格式: sections 是数字数组 [1,2,3]
                                 buildString {
                                     for (j in 0 until sectionsArr.length()) {
@@ -137,7 +162,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                     }
                                 }
                             } else {
-                                // AI 解析格式: sections 是逗号字符串 "1,2,3"
+                                // AI 解析格式 / 拾光仓库格式: startSection + endSection
                                 val start = courseJson.optInt("startSection", -1)
                                 val end = courseJson.optInt("endSection", -1)
                                 if (start != -1 && end != -1) {
@@ -197,7 +222,11 @@ private fun WebViewScreenContent(intent: Intent) {
             }
             override fun onSaveCourseConfig(configJson: String, callback: (Boolean, String?) -> Unit) { callback(true, null) }
             override fun onSavePresetTimeSlots(timeSlotsJson: String, callback: (Boolean, String?) -> Unit) { callback(true, null) }
-            override fun onTaskCompleted() {}
+            override fun onTaskCompleted() {
+                coroutineScope.launch {
+                    importState = ImportState.Success("导入完成")
+                }
+            }
         }
     }
 
@@ -327,7 +356,26 @@ private fun WebViewScreenContent(intent: Intent) {
                     importState = ImportState.Loading
                     
                     if (intentScript.isNotBlank()) {
-                        webViewRef?.evaluateJavascript(intentScript, null)
+                        // 先注入 window.AndroidBridgePromise JS 胶水，再执行适配器脚本
+                        val glueJs = """
+(function(){
+  if(window.AndroidBridgePromise)return;
+  var reg={};
+  window._resolveAndroidPromise=function(id,r){var p=reg[id];if(p){delete reg[id];p[0](r);}};
+  window._rejectAndroidPromise=function(id,e){var p=reg[id];if(p){delete reg[id];p[1](new Error(e));}};
+  function mkp(fn){return new Promise(function(res,rej){var id='_bp'+Date.now()+Math.random().toString(36).slice(2);reg[id]=[res,rej];fn(id);});}
+  window.AndroidBridgePromise={
+    showAlert:function(t,c,b){return mkp(function(id){AndroidBridge.showAlert(t,c,b,id);});},
+    showPrompt:function(t,p,d,v){return mkp(function(id){AndroidBridge.showPrompt(t,p,d||'',v||'',id);});},
+    showSingleSelection:function(t,i,d){return mkp(function(id){AndroidBridge.showSingleSelection(t,i,d!=null?d:-1,id);});},
+    saveImportedCourses:function(j){return mkp(function(id){AndroidBridge.saveImportedCourses(j,id);});},
+    saveCourseConfig:function(j){return mkp(function(id){AndroidBridge.saveCourseConfig(j,id);});},
+    savePresetTimeSlots:function(j){return mkp(function(id){AndroidBridge.savePresetTimeSlots(j,id);});}
+  };
+})();""".trimIndent()
+                        webViewRef?.evaluateJavascript(glueJs) {
+                            webViewRef?.evaluateJavascript(intentScript, null)
+                        }
                     } else {
                         webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
                             coroutineScope.launch {
@@ -389,6 +437,111 @@ private fun WebViewScreenContent(intent: Intent) {
             }
             
             Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+
+    // ---- 对话框 UI（由拾光仓库适配器脚本通过 AndroidBridgePromise 触发）----
+
+    // Alert 弹窗
+    val alert = alertStateRef.value
+    if (alert != null) {
+        Dialog(onDismissRequest = {}) {
+            Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(alert.data.title, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(alert.data.content, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Spacer(modifier = Modifier.weight(1f))
+                        Button(onClick = {
+                            alertStateRef.value = null
+                            alert.callback(true)
+                        }) {
+                            Text(alert.data.confirmText.ifBlank { "确定" })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Prompt 输入弹窗
+    val prompt = promptStateRef.value
+    if (prompt != null) {
+        Dialog(onDismissRequest = {}) {
+            Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(prompt.data.title, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (prompt.data.tip.isNotBlank()) {
+                        Text(prompt.data.tip, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    TextField(
+                        value = promptInputRef.value,
+                        onValueChange = { promptInputRef.value = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = {
+                                promptStateRef.value = null
+                                prompt.callback(null)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("取消") }
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Button(
+                            onClick = {
+                                val input = promptInputRef.value
+                                promptStateRef.value = null
+                                prompt.callback(input)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("确定") }
+                    }
+                }
+            }
+        }
+    }
+
+    // 单选列表弹窗
+    val selection = selectionStateRef.value
+    if (selection != null) {
+        Dialog(onDismissRequest = {
+            selectionStateRef.value = null
+            selection.callback(null)
+        }) {
+            Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) {
+                    Text(selection.data.title, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        itemsIndexed(selection.data.items) { index, item ->
+                            Text(
+                                text = item,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectionStateRef.value = null
+                                        selection.callback(index)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = {
+                            selectionStateRef.value = null
+                            selection.callback(null)
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    ) { Text("取消") }
+                }
+            }
         }
     }
 }
