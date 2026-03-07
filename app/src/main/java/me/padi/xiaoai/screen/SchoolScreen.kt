@@ -44,6 +44,7 @@ import me.padi.xiaoai.click.queryScoreFormSchool
 import me.padi.xiaoai.click.openContributorQQ
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
+import me.padi.xiaoai.writablePrefs
 import me.padi.xiaoai.ApiClient
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
@@ -229,22 +230,29 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                             }
                             importState = ImportState.Loading
                             webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                // evaluateJavascript 返回的是 JSON 编码字符串（带外层引号和转义），需解码
+                                val rawHtml = try { org.json.JSONArray("[$html]").getString(0) } catch (_: Exception) { html }
                                 coroutineScope.launch {
                                     try {
                                         val appId = HostCompat.getAppId()
-                                        val serviceToken = HostCompat.getAccessToken()
+                                        val serviceToken = HostCompat.getAccessToken(context)
                                         val deviceId = HostCompat.getDeviceId(context)
                                         if (serviceToken == null || deviceId == null) {
                                             importState = ImportState.Error("获取令牌失败")
                                             return@launch
                                         }
 
+                                        val prefs = context.writablePrefs()
+                                        val apiKey = prefs.getString("api_key", "") ?: ""
+                                        val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
+                                        val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
+
                                         withContext(Dispatchers.IO) {
                                             ApiClient.parseCoursesStreaming(
-                                                html,
-                                                HookEntry.prefs.getString("api_key", ""),
-                                                HookEntry.prefs.getString("model_name", ""),
-                                                HookEntry.prefs.getString("api_url", ""),
+                                                rawHtml,
+                                                apiKey,
+                                                modelName,
+                                                apiUrl,
                                                 ApiClient.SYSTEM_PROMPT,
                                                 object : ApiClient.ParseCallback {
                                                     override fun onUpdate(reasoning: String, content: String) {}
@@ -252,8 +260,15 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                                         coroutineScope.launch {
                                                             try {
                                                                 importState = ImportState.Parsing
+                                                                val fromCtId = withContext(Dispatchers.IO) {
+                                                                    ApiClient.fetchTables(appId, serviceToken, deviceId)
+                                                                        .firstOrNull { it.current == 1 }?.id ?: 0L
+                                                                }
                                                                 val ctid = withContext(Dispatchers.IO) {
                                                                     ApiClient.createTable(tableName.trim(), appId, serviceToken, deviceId)
+                                                                }
+                                                                withContext(Dispatchers.IO) {
+                                                                    ApiClient.switchTable(fromCtId, ctid, appId, serviceToken, deviceId)
                                                                 }
                                                                 withContext(Dispatchers.IO) {
                                                                     ApiClient.uploadCoursesAll(result.courses, ctid, appId, serviceToken, deviceId)
@@ -265,7 +280,9 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                                         }
                                                     }
                                                     override fun onError(e: Exception) {
-                                                        importState = ImportState.Error(e.message ?: "解析报错")
+                                                        coroutineScope.launch {
+                                                            importState = ImportState.Error(e.message ?: "解析报错")
+                                                        }
                                                     }
                                                 }
                                             )
@@ -280,10 +297,20 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                         Text("提取并导入")
                     }
                     
-                    if (importState is ImportState.Error) {
-                        Text((importState as ImportState.Error).message, color = MiuixTheme.colorScheme.error, fontSize = 12.sp)
-                    } else if (importState is ImportState.Success) {
-                        Text("✅ 导入成功", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
+                    when (importState) {
+                        is ImportState.Loading -> {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text("AI 正在解析课表，请稍候...", fontSize = 12.sp)
+                        }
+                        is ImportState.Parsing -> {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text("正在创建并导入课程数据...", fontSize = 12.sp)
+                        }
+                        is ImportState.Error -> Text((importState as ImportState.Error).message, color = MiuixTheme.colorScheme.error, fontSize = 12.sp)
+                        is ImportState.Success -> Text("✅ 导入成功", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
+                        else -> {}
                     }
                 }
             }

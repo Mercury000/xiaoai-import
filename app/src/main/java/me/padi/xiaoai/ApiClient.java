@@ -30,9 +30,9 @@ public class ApiClient {
     public static final String SEC_CH_UA_PLATFORM = "\"Android\"";
 
     private static final String APP_ID = "326813440150602752";
-    private static final String BASE_URL = "https://i.xiaomixiaoai.com";
-    private static final String SOURCE_NAME = "course-app-miui";
-    private static final String X_REQUESTED_WITH = "com.miui.voiceassist";
+    private static final String BASE_URL = "https://i.ai.mi.com";
+    private static final String SOURCE_NAME = "course-app-aiSchedule";
+    private static final String X_REQUESTED_WITH = "com.xiaomi.aischedule";
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -103,6 +103,15 @@ public class ApiClient {
 
     public static void parseCoursesStreaming(String html, String apiKey, String model, String baseUrl, String systemPrompt, ParseCallback callback) {
         try {
+            if (baseUrl == null || baseUrl.trim().isEmpty()) {
+                callback.onError(new Exception("API地址为空，请在主界面(模块设置)中检查大模型API地址！"));
+                return;
+            }
+            if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+                callback.onError(new Exception("API地址格式错误(缺少http/https)，请检查配置：" + baseUrl));
+                return;
+            }
+
             if (html.length() > 150000) html = html.substring(0, 150000);
 
             JSONObject body = new JSONObject();
@@ -285,13 +294,14 @@ public class ApiClient {
                                         String serviceToken, String deviceId) throws Exception {
         JSONArray courseArray = new JSONArray();
         for (Course course : courses) {
+            String styleStr = course.style != null ? course.style : COLOR_PRESETS[0];
             JSONObject courseObj = new JSONObject()
                     .put("name", course.name)
                     .put("position", course.position)
                     .put("teacher", course.teacher)
                     .put("day", course.day)
                     .put("sections", course.sections)
-                    .put("style", course.style != null ? course.style : COLOR_PRESETS[0])
+                    .put("style", styleStr)
                     .put("weeks", course.weeks)
                     .put("extend", "");
             courseArray.put(courseObj);
@@ -379,7 +389,13 @@ public class ApiClient {
                 CourseTable t = new CourseTable();
                 t.id = o.getLong("id");
                 t.name = o.optString("name", "未命名");
-                t.current = o.optInt("current", 0);
+                // API 可能返回布尔值 true/false，也可能返回 int 1/0
+                Object curObj = o.opt("current");
+                if (curObj instanceof Boolean) {
+                    t.current = ((Boolean) curObj) ? 1 : 0;
+                } else {
+                    t.current = o.optInt("current", 0);
+                }
                 if (o.has("setting")) t.settingStr = o.getJSONObject("setting").toString();
                 list.add(t);
             }
@@ -536,16 +552,16 @@ public class ApiClient {
         JSONObject body = new JSONObject()
                 .put("fromCtId", fromCtId)
                 .put("toCtId", toCtId)
-                .put("sourceName", SOURCE_NAME);
+                .put("sourceName", "course-app-miui");
         Request req = new Request.Builder()
-                .url(BASE_URL + "/course-multi-auth/table_switch")
+                .url("https://i.xiaomixiaoai.com/course-multi-auth/table_switch")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36")
-                .header("Origin", BASE_URL)
-                .header("X-Requested-With", X_REQUESTED_WITH)
-                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
+                .header("Origin", "https://i.xiaomixiaoai.com")
+                .header("X-Requested-With", "com.miui.voiceassist")
+                .header("Referer", "https://i.xiaomixiaoai.com/h5/precache/ai-schedule/")
                 .post(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {

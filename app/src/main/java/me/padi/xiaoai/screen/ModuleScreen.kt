@@ -35,6 +35,8 @@ import me.padi.xiaoai.click.openContributorQQ
 import me.padi.xiaoai.click.queryScoreFormSchool
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
+import me.padi.xiaoai.writablePrefs
+import me.padi.xiaoai.HostCompat
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -55,6 +57,14 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 class ModuleScreen : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 捕获并保存 Token (从 WebAppInterface.navSchoolScreen 传来的 Intent)
+        val token = intent.getStringExtra("service_token")
+        val deviceId = intent.getStringExtra("device_id")
+        if (!token.isNullOrBlank() || !deviceId.isNullOrBlank()) {
+            HostCompat.saveTokens(this, token, deviceId)
+        }
+
         enableEdgeToEdge()
         setContent {
             MiuixTheme {
@@ -100,7 +110,7 @@ class ModuleScreen : BaseActivity() {
                                     Spacer(Modifier.width(16.dp))
                                     Button(
                                         modifier = Modifier.weight(1f), onClick = {
-                                            HookEntry.prefs.edit().putString("debug_jw_url", url).apply()
+                                            context.writablePrefs().edit().putString("model_name", url).apply()
                                             dismiss?.invoke()
                                             (context as Activity).finish()
                                             val intent = Intent(context, WebViewScreen::class.java).apply {

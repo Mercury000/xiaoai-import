@@ -50,11 +50,17 @@ class WebAppInterface(private val context: Context) {
     @JavascriptInterface
     fun navSchoolScreen() {
         if (HostCompat.isLogin()) {
-        val intent = Intent(context, ModuleScreen::class.java)
-        intent.putExtra(
-            "proxy_target_activity", context.proxyActivity()
-        )
-        context.startActivity(intent)
+            val intent = Intent(context, ModuleScreen::class.java)
+            val loader = context.classLoader
+            val token = HostCompat.getAccessToken(loader = loader)
+            val deviceId = HostCompat.getDeviceId(context, loader = loader)
+            
+            intent.putExtra("service_token", token)
+            intent.putExtra("device_id", deviceId)
+            intent.putExtra(
+                "proxy_target_activity", context.proxyActivity()
+            )
+            context.startActivity(intent)
         } else {
             Toast.makeText(
                 context, "请先登录小米账号", Toast.LENGTH_SHORT

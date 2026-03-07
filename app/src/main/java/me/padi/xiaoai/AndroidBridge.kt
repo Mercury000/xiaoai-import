@@ -272,4 +272,53 @@ class AndroidBridge(
             )
         }
     }
+
+    /** 
+     * 针对通用和第三方适配库的旧版 XiaoAi native 接口模拟: window.app.postData()
+     * 这些脚本（特别是星链/拾光的脚本）会把最终解析结果封装在 JSON 中并调用 postData / closeWebView.
+     */
+    @JavascriptInterface
+    fun postData(msg: String) {
+        Log.d(TAG, "接收到 postData 消息，原教务导入模式调用: $msg")
+        try {
+            val rootJson = org.json.JSONObject(msg)
+            
+            // 旧版 XiaoAi 在 LocalStorage 存入 "presetData" 或发送 Action
+            if (rootJson.has("storage")) {
+                val storageNode = rootJson.getJSONObject("storage")
+                if (storageNode.optString("key") == "presetData") {
+                    val urlEncodedValue = storageNode.optString("value")
+                    val decodedValue = java.net.URLDecoder.decode(urlEncodedValue, "UTF-8")
+                    val decodedJson = org.json.JSONObject(decodedValue)
+                    if (decodedJson.has("importData")) {
+                        val importData = org.json.JSONObject(decodedJson.getString("importData"))
+                        if (importData.has("parserRes")) {
+                            val parserRes = importData.getString("parserRes")
+                            Log.d(TAG, "从 postData 成功剥离 parserRes 数据，大小: ${parserRes.length} 字节")
+                            val promiseId = "postData_" + System.currentTimeMillis()
+                            saveImportedCourses(parserRes, promiseId)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "解析 postData 失败: ${e.message}", e)
+        }
+    }
+
+    /**
+     * 模拟 window.app.closeWebView()，配合 postData 使用。
+     */
+    @JavascriptInterface
+    fun closeWebView() {
+        Log.d(TAG, "脚本请求关闭 WebView：执行关闭操作。")
+        handler.post {
+            if (context is android.app.Activity) {
+                // 等待 Toast 和异步处理完成再关闭
+                handler.postDelayed({
+                    context.finish()
+                }, 500)
+            }
+        }
+    }
 }

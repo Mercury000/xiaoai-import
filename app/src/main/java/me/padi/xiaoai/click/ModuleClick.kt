@@ -105,7 +105,7 @@ fun importCourseFormJw(context: Context) {
                                     c.day = courseJson.optInt("weekday", 1)
                                     val start = courseJson.optInt("startSection", 1)
                                     val end = courseJson.optInt("endSection", 2)
-                                    c.sections = "$start,$end"
+                                    c.sections = (start..end).joinToString(",")
                                     val weeksArray = courseJson.optJSONArray("weeks")
                                     c.weeks = if (weeksArray != null) {
                                         buildString {
@@ -124,15 +124,11 @@ fun importCourseFormJw(context: Context) {
                                     courses.add(c)
                                 }
 
-                                val ctid = ApiClient.createTable(tableName, appId, serviceToken, deviceId)
                                 val tables = ApiClient.fetchTables(appId, serviceToken, deviceId)
-                                val currentTable = tables.firstOrNull { it.current == 1 }
+                                val fromCtId = tables.firstOrNull { it.current == 1 }?.id ?: 0L
 
-                                if (currentTable != null) {
-                                    ApiClient.switchTable(currentTable.id, ctid, appId, serviceToken, deviceId)
-                                } else {
-                                    act.runOnUiThread { TipDialog.show("未找到当前课表") }
-                                }
+                                val ctid = ApiClient.createTable(tableName, appId, serviceToken, deviceId)
+                                ApiClient.switchTable(fromCtId, ctid, appId, serviceToken, deviceId)
 
                                 ApiClient.uploadCoursesAll(courses, ctid, appId, serviceToken, deviceId)
 

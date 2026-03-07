@@ -28,6 +28,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
+import me.padi.xiaoai.writablePrefs
+import me.padi.xiaoai.HostCompat
+import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -48,19 +51,19 @@ class AiScreen : BaseActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val context = LocalContext.current
             val scrollBehavior = MiuixScrollBehavior()
 
             // 从SharedPreferences读取保存的值
             var apiUrl by remember {
-                mutableStateOf(HookEntry.prefs.getString("api_url", ""))
+                mutableStateOf(context.writablePrefs().getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1")
             }
             var modelName by remember {
-                mutableStateOf(HookEntry.prefs.getString("model_name", ""))
+                mutableStateOf(context.writablePrefs().getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo")
             }
             var apiKey by remember {
-                mutableStateOf(HookEntry.prefs.getString("api_key", ""))
+                mutableStateOf(context.writablePrefs().getString("api_key", "") ?: "")
             }
-            val context = LocalContext.current
             val isAllFieldsFilled = remember(apiUrl, modelName, apiKey) {
                 apiUrl.isNotBlank() && modelName.isNotBlank() && apiKey.isNotBlank()
             }
@@ -86,9 +89,7 @@ class AiScreen : BaseActivity() {
                                 TextField(
                                     value = apiUrl, onValueChange = { newValue: String ->
                                         apiUrl = newValue
-                                        if (newValue.isNotBlank()) {
-                                            HookEntry.prefs.edit().putString("api_url", newValue).apply()
-                                        }
+                                        context.writablePrefs().edit().putString("api_url", newValue).apply()
                                     }, label = "Api地址"
                                 )
 
@@ -98,7 +99,7 @@ class AiScreen : BaseActivity() {
                                     value = modelName, onValueChange = { newValue: String ->
                                         modelName = newValue
                                         if (newValue.isNotBlank()) {
-                                            HookEntry.prefs.edit().putString("model_name", newValue).apply()
+                                            context.writablePrefs().edit().putString("model_name", newValue).apply()
                                         }
                                     }, label = "模型名称"
                                 )
@@ -109,9 +110,7 @@ class AiScreen : BaseActivity() {
                                     value = apiKey,
                                     onValueChange = { newValue: String ->
                                         apiKey = newValue
-                                        if (newValue.isNotBlank()) {
-                                            HookEntry.prefs.edit().putString("api_key", newValue).apply()
-                                        }
+                                        context.writablePrefs().edit().putString("api_key", newValue).apply()
                                     },
                                     label = "ApiKey"
                                 )

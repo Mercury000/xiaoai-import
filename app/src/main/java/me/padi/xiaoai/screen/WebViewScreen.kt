@@ -39,6 +39,15 @@ import me.padi.xiaoai.ApiClient
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
 import me.padi.xiaoai.hook.HookEntry
+import me.padi.xiaoai.writablePrefs
+import me.padi.xiaoai.AlertDialogData
+import me.padi.xiaoai.AndroidBridge
+import me.padi.xiaoai.BridgeCallback
+import me.padi.xiaoai.Course
+import me.padi.xiaoai.PromptDialogData
+import me.padi.xiaoai.SingleSelectionDialogData
+import org.json.JSONArray
+import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -93,6 +102,105 @@ private fun WebViewScreenContent(intent: Intent) {
     val coroutineScope = rememberCoroutineScope()
     val webViewState = rememberWebViewState(url)
 
+    val bridgeCallback = remember {
+        object : BridgeCallback {
+            override fun onShowAlert(data: AlertDialogData, callback: (Boolean) -> Unit) {}
+            override fun onShowPrompt(data: PromptDialogData, callback: (String?) -> Unit, errorCallback: (String) -> Unit) {}
+            override fun onShowSingleSelection(data: SingleSelectionDialogData, callback: (Int?) -> Unit) {}
+            override fun onSaveImportedCourses(coursesJson: String, callback: (Boolean, String?) -> Unit) {
+                importState = ImportState.Parsing
+                coroutineScope.launch(Dispatchers.IO) {
+                    try {
+                        val coursesArray = if (coursesJson.trim().startsWith("{")) {
+                            val root = JSONObject(coursesJson)
+                            root.optJSONArray("courses") ?: JSONArray()
+                        } else {
+                            JSONArray(coursesJson)
+                        }
+
+                        val courses = mutableListOf<Course>()
+                        for (i in 0 until coursesArray.length()) {
+                            val courseJson = coursesArray.getJSONObject(i)
+                            val c = Course()
+                            c.name = courseJson.optString("name", "").trim()
+                            c.teacher = courseJson.optString("teacher", "").trim()
+                            c.position = courseJson.optString("location", courseJson.optString("position", "")).trim()
+                            c.day = courseJson.optInt("weekday", courseJson.optInt("day", 1))
+                            
+                            val sectionsArr = courseJson.optJSONArray("sections")
+                            c.sections = if (sectionsArr != null) {
+                                // zf.js / 拾光格式: sections 是数字数组 [1,2,3]
+                                buildString {
+                                    for (j in 0 until sectionsArr.length()) {
+                                        if (j > 0) append(",")
+                                        append(sectionsArr.getInt(j))
+                                    }
+                                }
+                            } else {
+                                // AI 解析格式: sections 是逗号字符串 "1,2,3"
+                                val start = courseJson.optInt("startSection", -1)
+                                val end = courseJson.optInt("endSection", -1)
+                                if (start != -1 && end != -1) {
+                                    (start..end).joinToString(",")
+                                } else {
+                                    courseJson.optString("sections", "1,2").trim()
+                                }
+                            }
+                            
+                            val weeksArray = courseJson.optJSONArray("weeks")
+                            c.weeks = if (weeksArray != null) {
+                                buildString {
+                                    for (j in 0 until weeksArray.length()) {
+                                        append(weeksArray.getInt(j))
+                                        if (j != weeksArray.length() - 1) append(",")
+                                    }
+                                }
+                            } else courseJson.optString("weeks", "")
+
+                            val colorIndex = if (c.name.isNotEmpty()) kotlin.math.abs(c.name.hashCode() % ApiClient.COLOR_PRESETS.size) else i % ApiClient.COLOR_PRESETS.size
+                            c.style = ApiClient.COLOR_PRESETS[colorIndex]
+                            courses.add(c)
+                        }
+
+                        val appId = HostCompat.getAppId()
+                        val serviceToken = HostCompat.getAccessToken(context)
+                        val deviceId = HostCompat.getDeviceId(context)
+                        
+                        if (serviceToken == null || deviceId == null) {
+                             withContext(Dispatchers.Main) {
+                                 importState = ImportState.Error("无法获取令牌")
+                                 callback(false, "无法获取令牌")
+                             }
+                             return@launch
+                        }
+
+                        val ctid = ApiClient.createTable(tableName.ifBlank { "提取课表" }, appId, serviceToken, deviceId)
+
+                        val fromCtId = ApiClient.fetchTables(appId, serviceToken, deviceId)
+                            .firstOrNull { it.current == 1 }?.id ?: 0L
+                        ApiClient.switchTable(fromCtId, ctid, appId, serviceToken, deviceId)
+
+                        ApiClient.uploadCoursesAll(courses, ctid, appId, serviceToken, deviceId)
+                        
+                        withContext(Dispatchers.Main) {
+                            importState = ImportState.Success("导入成功")
+                            callback(true, null)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        withContext(Dispatchers.Main) {
+                            importState = ImportState.Error(e.message ?: "解析失败")
+                            callback(false, e.message)
+                        }
+                    }
+                }
+            }
+            override fun onSaveCourseConfig(configJson: String, callback: (Boolean, String?) -> Unit) { callback(true, null) }
+            override fun onSavePresetTimeSlots(timeSlotsJson: String, callback: (Boolean, String?) -> Unit) { callback(true, null) }
+            override fun onTaskCompleted() {}
+        }
+    }
+
     Scaffold(
         topBar = {
             SmallTopAppBar(title = intentTitle)
@@ -114,7 +222,7 @@ private fun WebViewScreenContent(intent: Intent) {
                     onValueChange = { newValue: String ->
                         url = newValue
                         if (newValue.isNotBlank()) {
-                            HookEntry.prefs.edit().putString("jw_webview_url", newValue).apply()
+                            context.writablePrefs().edit().putString("jw_webview_url", newValue).apply()
                         }
                     },
                     label = "教务链接",
@@ -148,9 +256,6 @@ private fun WebViewScreenContent(intent: Intent) {
                                 super.onPageFinished(view, url)
                                 webViewLoading = false
                                 CookieManager.getInstance().flush()
-                                if (intentScript.isNotBlank()) {
-                                    view.evaluateJavascript(intentScript, null)
-                                }
                             }
                         }
                     },
@@ -161,6 +266,9 @@ private fun WebViewScreenContent(intent: Intent) {
                             domStorageEnabled = true
                             databaseEnabled = true
                         }
+                        val bridge = AndroidBridge(context, webView, bridgeCallback)
+                        webView.addJavascriptInterface(bridge, "AndroidBridge")
+                        webView.addJavascriptInterface(bridge, "app")
                     }
                 )
 
@@ -218,51 +326,60 @@ private fun WebViewScreenContent(intent: Intent) {
                     }
                     importState = ImportState.Loading
                     
-                    webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                        coroutineScope.launch {
-                            try {
-                                val appId = HostCompat.getAppId()
-                                val serviceToken = HostCompat.getAccessToken()
-                                val deviceId = HostCompat.getDeviceId(context)
-                                
-                                if (serviceToken == null || deviceId == null) {
-                                    importState = ImportState.Error("无法获取令牌")
-                                    return@launch
-                                }
+                    if (intentScript.isNotBlank()) {
+                        webViewRef?.evaluateJavascript(intentScript, null)
+                    } else {
+                        webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                            coroutineScope.launch {
+                                try {
+                                    val appId = HostCompat.getAppId()
+                                    val serviceToken = HostCompat.getAccessToken(context)
+                                    val deviceId = HostCompat.getDeviceId(context)
+                                    
+                                    if (serviceToken == null || deviceId == null) {
+                                        importState = ImportState.Error("无法获取令牌")
+                                        return@launch
+                                    }
 
-                                withContext(Dispatchers.IO) {
-                                    ApiClient.parseCoursesStreaming(
-                                        html,
-                                        HookEntry.prefs.getString("api_key", ""),
-                                        HookEntry.prefs.getString("model_name", ""),
-                                        HookEntry.prefs.getString("api_url", ""),
-                                        ApiClient.SYSTEM_PROMPT,
-                                        object : ApiClient.ParseCallback {
-                                            override fun onUpdate(reasoning: String, content: String) {}
-                                            override fun onSuccess(result: ParseResult) {
-                                                coroutineScope.launch {
-                                                    try {
-                                                        importState = ImportState.Parsing
-                                                        val ctid = withContext(Dispatchers.IO) {
-                                                            ApiClient.createTable(tableName.trim(), appId, serviceToken, deviceId)
+                                    withContext(Dispatchers.IO) {
+                                        val prefs = context.writablePrefs()
+                                        val apiKey = prefs.getString("api_key", "") ?: ""
+                                        val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
+                                        val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
+
+                                        ApiClient.parseCoursesStreaming(
+                                            html,
+                                            apiKey,
+                                            modelName,
+                                            apiUrl,
+                                            ApiClient.SYSTEM_PROMPT,
+                                            object : ApiClient.ParseCallback {
+                                                override fun onUpdate(reasoning: String, content: String) {}
+                                                override fun onSuccess(result: ParseResult) {
+                                                    coroutineScope.launch {
+                                                        try {
+                                                            importState = ImportState.Parsing
+                                                            val ctid = withContext(Dispatchers.IO) {
+                                                                ApiClient.createTable(tableName.trim(), appId, serviceToken, deviceId)
+                                                            }
+                                                            withContext(Dispatchers.IO) {
+                                                                ApiClient.uploadCoursesAll(result.courses, ctid, appId, serviceToken, deviceId)
+                                                            }
+                                                            importState = ImportState.Success("AI解析并导入成功")
+                                                        } catch (e: Exception) {
+                                                            importState = ImportState.Error(e.message ?: "上传核心失败")
                                                         }
-                                                        withContext(Dispatchers.IO) {
-                                                            ApiClient.uploadCoursesAll(result.courses, ctid, appId, serviceToken, deviceId)
-                                                        }
-                                                        importState = ImportState.Success("完成")
-                                                    } catch (e: Exception) {
-                                                        importState = ImportState.Error(e.message ?: "上传错误")
                                                     }
                                                 }
+                                                override fun onError(e: Exception) {
+                                                    coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
+                                                }
                                             }
-                                            override fun onError(e: Exception) {
-                                                importState = ImportState.Error(e.message ?: "解析错误")
-                                            }
-                                        }
-                                    )
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    importState = ImportState.Error(e.message ?: "加载失败")
                                 }
-                            } catch (e: Exception) {
-                                importState = ImportState.Error(e.message ?: "未知错误")
                             }
                         }
                     }
