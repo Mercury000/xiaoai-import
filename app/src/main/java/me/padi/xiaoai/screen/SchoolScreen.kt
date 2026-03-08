@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -120,15 +122,16 @@ class SchoolScreen : BaseActivity() {
             try {
                 val remoteContent = response.body.string()
                 if (remoteContent.isNotBlank()) {
-                    parseAndPopulateList(remoteContent)
+                    // 必须切回主线程才能修改 Compose 状态，触发重组
+                    runOnUiThread { parseAndPopulateList(remoteContent) }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                isRefreshing = false
+                runOnUiThread { isRefreshing = false }
             }
         }, onError = { _ ->
-            isRefreshing = false
+            runOnUiThread { isRefreshing = false }
         })
     }
 
@@ -139,12 +142,17 @@ class SchoolScreen : BaseActivity() {
                 // 官方 YAML 规范
                 val schools = parseYamlList(content).filter { it.containsKey("id") && it.containsKey("name") }
                 for (school in schools) {
+                    val schoolName = school["name"] ?: "Unknown"
+                    val schoolId = school["id"] ?: ""
+                    // 含"通用"字样或 GLOBAL_TOOLS 置顶到 # 分组
+                    val schoolSortKey = if (schoolName.contains("通用") || schoolId == "GLOBAL_TOOLS") "#"
+                                       else school["initial"] ?: "#"
                     newList.add(SchoolData(
-                        name = school["name"] ?: "Unknown",
+                        name = schoolName,
                         type = "拾光适配",
                         url = school["resource_folder"] ?: "",
                         importType = "shiguang_official",
-                        sortKey = school["initial"] ?: "#"
+                        sortKey = schoolSortKey
                     ))
                 }
             } else {
@@ -178,7 +186,8 @@ class SchoolScreen : BaseActivity() {
 
             if (newList.isNotEmpty()) {
                 schoolList.clear()
-                schoolList.addAll(newList.sortedBy { it.name })
+                // 先按 sortKey 再按 name 排序，保证 "#" 置顶分组内条目也有序
+                schoolList.addAll(newList.sortedWith(compareBy({ it.sortKey }, { it.name })))
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -337,13 +346,27 @@ private fun SchoolListScreenContent(
                                         (context as SchoolScreen).runOnUiThread {
                                             if (adapters.size == 1) {
                                                 val a = adapters[0]
-                                                startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
+                                                val desc = buildString {
+                                                    append(a["description"] ?: "")
+                                                    val maintainer = a["maintainer"]
+                                                    if (!maintainer.isNullOrBlank()) append("\\n\\n贡献者：$maintainer")
+                                                }
+                                                startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", desc)
                                             } else {
-                                                val subNames: Array<String> = adapters.map { it["adapter_name"] ?: "Unknown" }.toTypedArray()
+                                                val subNames: Array<String> = adapters.map {
+                                                    val adapterName = it["adapter_name"] ?: "Unknown"
+                                                    val maintainer = it["maintainer"]
+                                                    if (!maintainer.isNullOrBlank()) "$adapterName  (贡献者：$maintainer)" else adapterName
+                                                }.toTypedArray()
                                                 BottomMenu.show(subNames).setTitle(school.name).setMessage("选择导入方式")
                                                     .setOnMenuItemClickListener { _, _, subIndex ->
                                                         val a = adapters[subIndex]
-                                                        startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
+                                                        val desc = buildString {
+                                                            append(a["description"] ?: "")
+                                                            val maintainer = a["maintainer"]
+                                                            if (!maintainer.isNullOrBlank()) append("\\n\\n贡献者：$maintainer")
+                                                        }
+                                                        startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", desc)
                                                         false
                                                     }
                                             }
@@ -376,7 +399,13 @@ private fun SchoolListScreenContent(
                 show = remember { mutableStateOf(showBottomSheet) },
                 onDismissRequest = { showBottomSheet = false }
             ) {
-                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .navigationBarsPadding()
+                        // 不对整列做 imePadding，避免 WebView 被键盘压缩
+                ) {
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         WebView(
                             state = webViewState,
@@ -403,6 +432,9 @@ private fun SchoolListScreenContent(
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
                         }
                     }
+
+                    // 底部控件区：仅此区域随键盘上移，WebView 保持固定不动
+                    Column(modifier = Modifier.fillMaxWidth().imePadding()) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -496,6 +528,7 @@ private fun SchoolListScreenContent(
                         is ImportState.Success -> Text("✅ 导入成功", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
                         else -> {}
                     }
+                    } // end 底部控件 Column (imePadding)
                 }
             }
         }

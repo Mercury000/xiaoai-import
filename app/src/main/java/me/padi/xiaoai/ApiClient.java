@@ -8,6 +8,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -477,74 +478,98 @@ public class ApiClient {
             String raw = resp.body() != null ? resp.body().string() : "";
             if (!resp.isSuccessful()) {
                 if (resp.code() == 401) throw new UnauthorizedException("Token expired");
+                if (resp.code() == 500) {
+                    throw new Exception("HTTP 500: 认证失效或服务端异常，请检查登录状态");
+                }
                 throw new Exception("新建课表请求失败(HTTP " + resp.code() + ")");
             }
             JSONObject json = new JSONObject(raw);
-            if (json.optInt("code", -1) != 0)
-                throw new Exception(json.optString("desc", "新建课表响应错误"));
+            if (json.optInt("code", -1) != 0) {
+                String desc = json.optString("desc", "新建课表响应错误");
+                // "repeat request" 表示服务端认为短时间内重复建表，尝试找到同名表复用
+                if (desc.toLowerCase().contains("repeat")) {
+                    android.util.Log.w("ApiClient", "createTable repeat detected, recovering existing table: " + name);
+                    List<CourseTable> existing = fetchTables(appId, serviceToken, deviceId);
+                    for (CourseTable t : existing) {
+                        if (name.equals(t.name)) {
+                            android.util.Log.i("ApiClient", "Reusing existing table id=" + t.id);
+                            return t.id;
+                        }
+                    }
+                }
+                throw new Exception(desc);
+            }
             return json.getLong("data");
         }
     }
 
     public static void updateTableSettings(long ctId, String name, String sourceSettingStr, String originalSettingStr, ScheduleConfig customSchedule, String appId, String serviceToken, String deviceId) throws Exception {
+        // 两者均有值时才执行；否则没有足够数据构建合法 setting
         if (sourceSettingStr == null || sourceSettingStr.isEmpty() || originalSettingStr == null || originalSettingStr.isEmpty())
             return;
 
         JSONObject sourceObj = new JSONObject(sourceSettingStr);
         JSONObject origObj = new JSONObject(originalSettingStr);
+        // 从零构建 merged，仅放入明确需要的字段
         JSONObject merged = new JSONObject();
 
+        // 固定字段：从新建课表默认值取（保证 id/学期等为本次课表的正确值）
+        if (origObj.has("id")) merged.put("id", origObj.get("id"));
         if (origObj.has("presentWeek")) merged.put("presentWeek", origObj.get("presentWeek"));
         if (origObj.has("totalWeek")) merged.put("totalWeek", origObj.get("totalWeek"));
         if (origObj.has("startSemester")) merged.put("startSemester", origObj.get("startSemester"));
-        if (origObj.has("id")) merged.put("id", origObj.get("id"));
 
+        // 用户习惯字段：从导入前活跃课表取（保留用户的周末/语音等偏好）
         String[] cloneKeys = {"isWeekend", "morningNum", "afternoonNum", "nightNum", "speak", "weekStart"};
         for (String k : cloneKeys) {
             if (sourceObj.has(k)) merged.put(k, sourceObj.get(k));
         }
 
+        // 时间节次-sections：优先用解析结果，否则取活跃课表值；始终序列化为 JSON 字符串
         if (sourceObj.has("sections")) {
-            merged.put("sections", sourceObj.get("sections"));
+            Object secObj = sourceObj.get("sections");
+            merged.put("sections", secObj instanceof String ? secObj : secObj.toString());
         } else if (sourceObj.has("sectionTimes")) {
-            merged.put("sections", sourceObj.get("sectionTimes"));
+            Object stObj = sourceObj.get("sectionTimes");
+            merged.put("sections", stObj instanceof String ? stObj : stObj.toString());
         }
-
         if (customSchedule != null) {
-            if (customSchedule.morningNum != null)
-                merged.put("morningNum", customSchedule.morningNum);
-            if (customSchedule.afternoonNum != null)
-                merged.put("afternoonNum", customSchedule.afternoonNum);
-            if (customSchedule.nightNum != null) merged.put("nightNum", customSchedule.nightNum);
+            if (customSchedule.morningNum != null) merged.put("morningNum", (int) customSchedule.morningNum);
+            if (customSchedule.afternoonNum != null) merged.put("afternoonNum", (int) customSchedule.afternoonNum);
+            if (customSchedule.nightNum != null) merged.put("nightNum", (int) customSchedule.nightNum);
             if (customSchedule.sections != null && !customSchedule.sections.isEmpty())
                 merged.put("sections", customSchedule.sections);
         }
 
+        // school 必须为 JSON 字符串（服务端要求）
         String school = sourceObj.optString("school", "{}");
         if (school.isEmpty()) school = "{}";
         merged.put("school", school);
 
+        // extend：以新建课表的 extend 为基础，覆盖活跃课表的 bgSetting/degree/showNotInWeek
         JSONObject mergedExt = new JSONObject();
         try {
-            mergedExt = new JSONObject(origObj.optString("extend", "{}"));
-        } catch (Exception ignored) {
-        }
-
+            Object origExtVal = origObj.opt("extend");
+            String origExtStr = origExtVal instanceof String ? (String) origExtVal : (origExtVal != null ? origExtVal.toString() : "{}");
+            mergedExt = new JSONObject(origExtStr.isEmpty() ? "{}" : origExtStr);
+        } catch (Exception ignored) {}
         try {
-            JSONObject sourceExt = new JSONObject(sourceObj.optString("extend", "{}"));
+            Object srcExtVal = sourceObj.opt("extend");
+            String srcExtStr = srcExtVal instanceof String ? (String) srcExtVal : (srcExtVal != null ? srcExtVal.toString() : "{}");
+            JSONObject sourceExt = new JSONObject(srcExtStr.isEmpty() ? "{}" : srcExtStr);
             if (sourceExt.has("bgSetting")) mergedExt.put("bgSetting", sourceExt.get("bgSetting"));
             if (sourceExt.has("degree")) mergedExt.put("degree", sourceExt.get("degree"));
-            if (sourceExt.has("showNotInWeek"))
-                mergedExt.put("showNotInWeek", sourceExt.get("showNotInWeek"));
-        } catch (Exception ignored) {
-        }
-
+            if (sourceExt.has("showNotInWeek")) mergedExt.put("showNotInWeek", sourceExt.get("showNotInWeek"));
+        } catch (Exception ignored) {}
         merged.put("extend", mergedExt.toString());
 
         JSONObject body = new JSONObject()
-                .put("ctId", ctId).put("name", name)
+                .put("ctId", ctId)
+                .put("name", name)
                 .put("setting", merged)
                 .put("sourceName", SOURCE_NAME);
+
+        // 旧版 API 使用 PUT 方法，URL 无额外查询参数
         Request req = new Request.Builder()
                 .url(BASE_URL + "/course-multi-auth/table")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
@@ -553,10 +578,12 @@ public class ApiClient {
                 .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
                 .put(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
+
         try (Response resp = CLIENT.newCall(req).execute()) {
             if (!resp.isSuccessful()) {
                 if (resp.code() == 401) throw new UnauthorizedException("Token expired");
-                throw new Exception("同步课表设置失败(HTTP " + resp.code() + ")");
+                // 设置项上传非关键，不阻断整体导入流程
+                android.util.Log.w("ApiClient", "updateTableSettings failed HTTP " + resp.code() + ", ignored");
             }
         }
     }

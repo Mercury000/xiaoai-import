@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -259,211 +261,228 @@ private fun WebViewScreenContent(intent: Intent) {
             SmallTopAppBar(title = intentTitle)
         }
     ) { paddingValues ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
                 .overScrollVertical()
+                .navigationBarsPadding()
+                .imePadding()
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextField(
+                        value = url,
+                        onValueChange = { newValue: String ->
+                            url = newValue
+                            if (newValue.isNotBlank()) {
+                                context.writablePrefs().edit().putString("jw_webview_url", newValue).apply()
+                            }
+                        },
+                        label = "教务链接",
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = {
+                        webViewState.content = WebContent.Url(url)
+                    }) {
+                        Icon(imageVector = MiuixIcons.Download, contentDescription = "前往")
+                    }
+                }
+            }
+
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(450.dp)
+                ) {
+                    WebView(
+                        state = webViewState,
+                        modifier = Modifier.matchParentSize(),
+                        navigator = navigator,
+                        captureBackPresses = false,
+                        client = remember {
+                            object : AccompanistWebViewClient() {
+                                override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                                    super.onPageStarted(view, url, favicon)
+                                    webViewLoading = true
+                                }
+
+                                override fun onPageFinished(view: WebView, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    webViewLoading = false
+                                    CookieManager.getInstance().flush()
+                                }
+                            }
+                        },
+                        onCreated = { webView ->
+                            webViewRef = webView
+                            webView.settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                databaseEnabled = true
+                            }
+                            val bridge = AndroidBridge(context, webView, bridgeCallback)
+                            webView.addJavascriptInterface(bridge, "AndroidBridge")
+                            webView.addJavascriptInterface(bridge, "app")
+                        }
+                    )
+
+                    if (webViewLoading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
+                    }
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 状态显示
+                if (intentText.isNotBlank()) {
+                    Text(intentText, color = MiuixTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+                }
+            }
+
+            item {
+                when (val state = importState) {
+                    is ImportState.Loading -> {
+                        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.size(8.dp))
+                                Text("正在解析...")
+                            }
+                        }
+                    }
+                    is ImportState.Parsing -> {
+                        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.size(8.dp))
+                                Text("正在导入...")
+                            }
+                        }
+                    }
+                    is ImportState.Success -> {
+                        Text("✅ ${state.message}", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
+                    }
+                    is ImportState.Error -> {
+                        Text("❌ ${state.message}", color = MiuixTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                    ImportState.Idle -> {}
+                }
+            }
+
+            item {
                 TextField(
-                    value = url,
-                    onValueChange = { newValue: String ->
-                        url = newValue
-                        if (newValue.isNotBlank()) {
-                            context.writablePrefs().edit().putString("jw_webview_url", newValue).apply()
-                        }
-                    },
-                    label = "教务链接",
-                    modifier = Modifier.weight(1f)
+                    value = tableName,
+                    onValueChange = { tableName = it },
+                    label = "课表名称"
                 )
-                IconButton(onClick = {
-                    webViewState.content = WebContent.Url(url)
-                }) {
-                    Icon(imageVector = MiuixIcons.Download, contentDescription = "前往")
-                }
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                WebView(
-                    state = webViewState,
-                    modifier = Modifier.matchParentSize(),
-                    navigator = navigator,
-                    captureBackPresses = false,
-                    client = remember {
-                        object : AccompanistWebViewClient() {
-                            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
-                                super.onPageStarted(view, url, favicon)
-                                webViewLoading = true
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
+                    onClick = {
+                        if (tableName.isBlank()) {
+                            importState = ImportState.Error("请输入课表名称")
+                            return@Button
+                        }
+                        importState = ImportState.Loading
+                        
+                        if (intentScript.isNotBlank()) {
+                            // 先注入 window.AndroidBridgePromise JS 胶水，再执行适配器脚本
+                            val glueJs = """
+    (function(){
+      if(window.AndroidBridgePromise)return;
+      var reg={};
+      window._resolveAndroidPromise=function(id,r){var p=reg[id];if(p){delete reg[id];p[0](r);}};
+      window._rejectAndroidPromise=function(id,e){var p=reg[id];if(p){delete reg[id];p[1](new Error(e));}};
+      function mkp(fn){return new Promise(function(res,rej){var id='_bp'+Date.now()+Math.random().toString(36).slice(2);reg[id]=[res,rej];fn(id);});}
+      window.AndroidBridgePromise={
+        showAlert:function(t,c,b){return mkp(function(id){AndroidBridge.showAlert(t,c,b,id);});},
+        showPrompt:function(t,p,d,v){return mkp(function(id){AndroidBridge.showPrompt(t,p,d||'',v||'',id);});},
+        showSingleSelection:function(t,i,d){return mkp(function(id){AndroidBridge.showSingleSelection(t,i,d!=null?d:-1,id);});},
+        saveImportedCourses:function(j){return mkp(function(id){AndroidBridge.saveImportedCourses(j,id);});},
+        saveCourseConfig:function(j){return mkp(function(id){AndroidBridge.saveCourseConfig(j,id);});},
+        savePresetTimeSlots:function(j){return mkp(function(id){AndroidBridge.savePresetTimeSlots(j,id);});}
+      };
+    })();""".trimIndent()
+                            webViewRef?.evaluateJavascript(glueJs) {
+                                webViewRef?.evaluateJavascript(intentScript, null)
                             }
-
-                            override fun onPageFinished(view: WebView, url: String?) {
-                                super.onPageFinished(view, url)
-                                webViewLoading = false
-                                CookieManager.getInstance().flush()
-                            }
-                        }
-                    },
-                    onCreated = { webView ->
-                        webViewRef = webView
-                        webView.settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            databaseEnabled = true
-                        }
-                        val bridge = AndroidBridge(context, webView, bridgeCallback)
-                        webView.addJavascriptInterface(bridge, "AndroidBridge")
-                        webView.addJavascriptInterface(bridge, "app")
-                    }
-                )
-
-                if (webViewLoading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 状态显示
-            if (intentText.isNotBlank()) {
-                Text(intentText, color = MiuixTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
-            }
-            when (val state = importState) {
-                is ImportState.Loading -> {
-                    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.size(8.dp))
-                            Text("正在解析...")
-                        }
-                    }
-                }
-                is ImportState.Parsing -> {
-                    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.size(8.dp))
-                            Text("正在导入...")
-                        }
-                    }
-                }
-                is ImportState.Success -> {
-                    Text("✅ ${state.message}", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
-                }
-                is ImportState.Error -> {
-                    Text("❌ ${state.message}", color = MiuixTheme.colorScheme.error, fontSize = 12.sp)
-                }
-                ImportState.Idle -> {}
-            }
-
-            TextField(
-                value = tableName,
-                onValueChange = { tableName = it },
-                label = "课表名称"
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
-                onClick = {
-                    if (tableName.isBlank()) {
-                        importState = ImportState.Error("请输入课表名称")
-                        return@Button
-                    }
-                    importState = ImportState.Loading
-                    
-                    if (intentScript.isNotBlank()) {
-                        // 先注入 window.AndroidBridgePromise JS 胶水，再执行适配器脚本
-                        val glueJs = """
-(function(){
-  if(window.AndroidBridgePromise)return;
-  var reg={};
-  window._resolveAndroidPromise=function(id,r){var p=reg[id];if(p){delete reg[id];p[0](r);}};
-  window._rejectAndroidPromise=function(id,e){var p=reg[id];if(p){delete reg[id];p[1](new Error(e));}};
-  function mkp(fn){return new Promise(function(res,rej){var id='_bp'+Date.now()+Math.random().toString(36).slice(2);reg[id]=[res,rej];fn(id);});}
-  window.AndroidBridgePromise={
-    showAlert:function(t,c,b){return mkp(function(id){AndroidBridge.showAlert(t,c,b,id);});},
-    showPrompt:function(t,p,d,v){return mkp(function(id){AndroidBridge.showPrompt(t,p,d||'',v||'',id);});},
-    showSingleSelection:function(t,i,d){return mkp(function(id){AndroidBridge.showSingleSelection(t,i,d!=null?d:-1,id);});},
-    saveImportedCourses:function(j){return mkp(function(id){AndroidBridge.saveImportedCourses(j,id);});},
-    saveCourseConfig:function(j){return mkp(function(id){AndroidBridge.saveCourseConfig(j,id);});},
-    savePresetTimeSlots:function(j){return mkp(function(id){AndroidBridge.savePresetTimeSlots(j,id);});}
-  };
-})();""".trimIndent()
-                        webViewRef?.evaluateJavascript(glueJs) {
-                            webViewRef?.evaluateJavascript(intentScript, null)
-                        }
-                    } else {
-                        webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                            coroutineScope.launch {
-                                try {
-                                    val appId = HostCompat.getAppId()
-                                    val serviceToken = HostCompat.getAccessToken(context)
-                                    val deviceId = HostCompat.getDeviceId(context)
-                                    
-                                    if (serviceToken == null || deviceId == null) {
-                                        importState = ImportState.Error("无法获取令牌")
-                                        return@launch
-                                    }
-
-                                    withContext(Dispatchers.IO) {
-                                        val prefs = context.writablePrefs()
-                                        val apiKey = prefs.getString("api_key", "") ?: ""
-                                        val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
-                                        val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
-
-                                        ApiClient.parseCoursesStreaming(
-                                            html,
-                                            apiKey,
-                                            modelName,
-                                            apiUrl,
-                                            ApiClient.SYSTEM_PROMPT,
-                                            object : ApiClient.ParseCallback {
-                                                override fun onUpdate(reasoning: String, content: String) {}
-                                                override fun onSuccess(result: ParseResult) {
-                                            coroutineScope.launch {
-                                                try {
-                                                    importState = ImportState.Parsing
-                                                    CourseRepository.importCourses(
-                                                        context,
-                                                        appId,
-                                                        tableName.trim(),
-                                                        result.courses
-                                                    )
-                                                    importState = ImportState.Success("AI解析并导入成功")
-                                                } catch (e: Exception) {
-                                                    importState = ImportState.Error(e.message ?: "导入报错")
-                                                }
-                                            }
+                        } else {
+                            webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                coroutineScope.launch {
+                                    try {
+                                        val appId = HostCompat.getAppId()
+                                        val serviceToken = HostCompat.getAccessToken(context)
+                                        val deviceId = HostCompat.getDeviceId(context)
+                                        
+                                        if (serviceToken == null || deviceId == null) {
+                                            importState = ImportState.Error("无法获取令牌")
+                                            return@launch
                                         }
-                                                override fun onError(e: Exception) {
-                                                    coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
+
+                                        withContext(Dispatchers.IO) {
+                                            val prefs = context.writablePrefs()
+                                            val apiKey = prefs.getString("api_key", "") ?: ""
+                                            val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
+                                            val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
+
+                                            ApiClient.parseCoursesStreaming(
+                                                html,
+                                                apiKey,
+                                                modelName,
+                                                apiUrl,
+                                                ApiClient.SYSTEM_PROMPT,
+                                                object : ApiClient.ParseCallback {
+                                                    override fun onUpdate(reasoning: String, content: String) {}
+                                                    override fun onSuccess(result: ParseResult) {
+                                                coroutineScope.launch {
+                                                    try {
+                                                        importState = ImportState.Parsing
+                                                        CourseRepository.importCourses(
+                                                            context,
+                                                            appId,
+                                                            tableName.trim(),
+                                                            result.courses
+                                                        )
+                                                        importState = ImportState.Success("AI解析并导入成功")
+                                                    } catch (e: Exception) {
+                                                        importState = ImportState.Error(e.message ?: "导入报错")
+                                                    }
                                                 }
                                             }
-                                        )
+                                                    override fun onError(e: Exception) {
+                                                        coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        importState = ImportState.Error(e.message ?: "加载失败")
                                     }
-                                } catch (e: Exception) {
-                                    importState = ImportState.Error(e.message ?: "加载失败")
                                 }
                             }
                         }
                     }
+                ) {
+                    Text(if (webViewLoading) "正在加载页面..." else "开始解析导入")
                 }
-            ) {
-                Text(if (webViewLoading) "正在加载页面..." else "开始解析导入")
             }
             
-            Spacer(modifier = Modifier.height(20.dp))
+            item {
+                Spacer(modifier = Modifier.height(20.dp))
+            }
         }
     }
 

@@ -10,6 +10,10 @@ import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
 object OkHttpClientManager {
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -44,6 +48,26 @@ object OkHttpClientManager {
             .build()
 
         client.newCall(request).enqueue(callback)
+    }
+
+    /**
+     * 挂起式 GET 请求
+     */
+    suspend fun getSync(url: String): String = suspendCancellableCoroutine { continuation ->
+        get(url, object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body.string()
+                    continuation.resume(body)
+                } catch (e: Exception) {
+                    continuation.resumeWithException(e)
+                }
+            }
+        })
     }
 }
 

@@ -25,6 +25,8 @@ import me.padi.xiaoai.ScheduleConfig
 import me.padi.xiaoai.parseYamlList
 import me.padi.xiaoai.launchImportActivity
 import me.padi.xiaoai.screen.AiScreen
+import me.padi.xiaoai.screen.JwSystemScreen
+import me.padi.xiaoai.screen.ScoreScreen
 import me.padi.xiaoai.screen.SchoolScreen
 import me.padi.xiaoai.screen.WebViewScreen
 import org.json.JSONArray
@@ -40,7 +42,7 @@ import kotlinx.coroutines.launch
 
 fun importCourseFormJw(context: Context) {
     BottomMenu.show(
-        "指定学校导入", "拾光适配仓库", "Json导入", "通用教务系统导入", "AI解析导入"
+        "教务系统导入", "Json导入", "AI解析导入"
     ).setTitle("提示").setMessage("选择一个导入方式")
         .setOnMenuItemClickListener { dialog, text, index ->
             when (text) {
@@ -50,6 +52,11 @@ fun importCourseFormJw(context: Context) {
                         "proxy_target_activity",
                         context.proxyActivity()
                     )
+                    context.startActivity(intent)
+                }
+
+                "教务系统导入" -> {
+                    val intent = Intent(context, JwSystemScreen::class.java)
                     context.startActivity(intent)
                 }
 
@@ -128,149 +135,10 @@ fun importCourseFormJw(context: Context) {
                     }.show()
                 }
 
-                "通用教务系统导入", "拾光适配仓库", "指定学校导入" -> {
-                    val activity = context as Activity
-                    val waitDialog = WaitDialog.show("加载中")
-                    val baseUrl = when (text) {
-                        "通用教务系统导入" -> "https://gitee.com/padi/aishedule/raw/master/system.json"
-                        "拾光适配仓库" -> "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
-                        else -> "https://gitee.com/padi/aishedule/raw/master/school.json"
-                    }
-
-                    OkHttpClientManager.get(
-                        url = baseUrl,
-                        onSuccess = { response ->
-                            waitDialog.doDismiss()
-                            try {
-                                val responseBody = response.body.string()
-                                if (text == "拾光适配仓库") {
-                                    handleShiguangImport(context, responseBody)
-                                } else {
-                                    handleCommonImport(context, text.toString(), responseBody)
-                                }
-                            } catch (e: Exception) {
-                                YLog.debug("解析失败: ${e.message}")
-                            }
-                        },
-                        onError = { e ->
-                            waitDialog.doDismiss()
-                            TipDialog.show(e.message, WaitDialog.TYPE.ERROR)
-                        })
-                }
             }
             false
         }
 }
-
-private fun handleShiguangImport(context: Context, responseBody: String) {
-    val activity = context as Activity
-    
-    // 解析 YAML: 提取 schools 列表
-    val schools = parseYamlList(responseBody).filter { it.containsKey("id") && it.containsKey("name") }
-    if (schools.isEmpty()) {
-        TipDialog.show("未找到有效的学校列表")
-        return
-    }
-
-    val names = schools.map { it["name"] ?: "Unknown" }.toTypedArray()
-    val folders = schools.map { it["resource_folder"] ?: "" }
-
-    activity.runOnUiThread {
-        BottomMenu.show(names).setTitle("拾光适配仓库").setMessage("请选择分类/学校")
-            .setSingleSelection()
-            .setOnMenuItemClickListener { firstDialog, name, index ->
-                val folder = folders[index]
-                val adaptersUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/adapters.yaml"
-                
-                WaitDialog.show("加载适配器列表...")
-                OkHttpClientManager.get(adaptersUrl, onSuccess = { resp ->
-                    WaitDialog.dismiss()
-                    val yamlContent = resp.body.string()
-                    val adapters = parseYamlList(yamlContent).filter { it.containsKey("adapter_id") && it.containsKey("adapter_name") }
-                    
-                    if (adapters.isEmpty()) {
-                        TipDialog.show("未找到有效的适配脚本")
-                        return@get
-                    }
-
-                    activity.runOnUiThread {
-                        if (adapters.size == 1) {
-                            val a = adapters[0]
-                            launchOfficialAdapter(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
-                        } else {
-                            val subNames = adapters.map { it["adapter_name"] ?: "Unknown" }.toTypedArray()
-                            BottomMenu.show(subNames).setTitle(name).setMessage("请选择具体功能")
-                                .setSingleSelection()
-                                .setOnMenuItemClickListener { secondDialog, subName, subIndex ->
-                                    val a = adapters[subIndex]
-                                    launchOfficialAdapter(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
-                                    false
-                                }
-                        }
-                    }
-                }, onError = { e ->
-                    WaitDialog.dismiss()
-                    TipDialog.show("列表下载失败: ${e.message}")
-                })
-                false
-            }
-    }
-}
-
-private fun launchOfficialAdapter(context: Context, folder: String, name: String, jsPath: String, url: String, desc: String) {
-    val scriptUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/$jsPath"
-    WaitDialog.show("加载脚本...")
-    OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
-        WaitDialog.dismiss()
-        val jsStr = resp.body.string()
-        launchImportActivity(context, url, name, desc.replace("\\n", "\n"), jsStr)
-    }, onError = { e ->
-        WaitDialog.dismiss()
-        TipDialog.show("脚本下载失败: ${e.message}")
-    })
-}
-
-private fun handleCommonImport(context: Context, type: String, responseBody: String) {
-    val activity = context as Activity
-    val jsonArray = JSONArray(responseBody)
-    val names = mutableListOf<String>()
-    val urls = mutableListOf<String>()
-    val typesOrIds = mutableListOf<String>()
-
-    for (i in 0 until jsonArray.length()) {
-        val obj = jsonArray.getJSONObject(i)
-        names.add(obj.optString("name", ""))
-        urls.add(obj.optString("url", ""))
-        typesOrIds.add(obj.optString(if (type == "通用教务系统导入") "type" else "id", ""))
-    }
-
-    activity.runOnUiThread {
-        BottomMenu.show(names.toTypedArray()).setTitle("提示")
-            .setMessage("请选择目标进行导入")
-            .setSingleSelection()
-            .setOnMenuItemClickListener { dialog, text, index ->
-                val targetUrl = urls[index]
-                val targetTypeOrId = typesOrIds[index]
-                val jsUrl = if (type == "通用教务系统导入") {
-                    "https://gitee.com/padi/aishedule/raw/master/system/$targetTypeOrId.js"
-                } else {
-                    "https://gitee.com/padi/aishedule/raw/master/import/$targetTypeOrId.js"
-                }
-
-                WaitDialog.show("加载中")
-                OkHttpClientManager.get(jsUrl, onSuccess = { resp ->
-                    WaitDialog.dismiss()
-                    val jsStr = resp.body.string()
-                    launchImportActivity(context, targetUrl, "导入课程表", "请登录后点击一键导入", jsStr)
-                }, onError = { e ->
-                    WaitDialog.dismiss()
-                    TipDialog.show("加载失败: ${e.message}")
-                })
-                false
-            }
-    }
-}
-
 
 fun queryScoreFormSchool(context: Context) {
     val activity = context as Activity
