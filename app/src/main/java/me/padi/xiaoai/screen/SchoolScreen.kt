@@ -260,18 +260,38 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                                                         coroutineScope.launch {
                                                             try {
                                                                 importState = ImportState.Parsing
+                                                                val loader = context.classLoader
+                                                                
+                                                                suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
+                                                                    val token = HostCompat.getAccessToken(context, loader) ?: ""
+                                                                    return try {
+                                                                        block(token)
+                                                                    } catch (e: ApiClient.UnauthorizedException) {
+                                                                        val newToken = HostCompat.getAccessToken(context, loader) ?: ""
+                                                                        block(newToken)
+                                                                    }
+                                                                }
+
                                                                 val fromCtId = withContext(Dispatchers.IO) {
-                                                                    ApiClient.fetchTables(appId, serviceToken, deviceId)
-                                                                        .firstOrNull { it.current == 1 }?.id ?: 0L
+                                                                    runWithRetry { tok ->
+                                                                        ApiClient.fetchTables(appId, tok, deviceId)
+                                                                            .firstOrNull { it.current == 1 }?.id ?: 0L
+                                                                    }
                                                                 }
                                                                 val ctid = withContext(Dispatchers.IO) {
-                                                                    ApiClient.createTable(tableName.trim(), appId, serviceToken, deviceId)
+                                                                    runWithRetry { tok ->
+                                                                        ApiClient.createTable(tableName.trim(), appId, tok, deviceId)
+                                                                    }
                                                                 }
                                                                 withContext(Dispatchers.IO) {
-                                                                    ApiClient.switchTable(fromCtId, ctid, appId, serviceToken, deviceId)
+                                                                    runWithRetry { tok ->
+                                                                        ApiClient.switchTable(fromCtId, ctid, appId, tok, deviceId)
+                                                                    }
                                                                 }
                                                                 withContext(Dispatchers.IO) {
-                                                                    ApiClient.uploadCoursesAll(result.courses, ctid, appId, serviceToken, deviceId)
+                                                                    runWithRetry { tok ->
+                                                                        ApiClient.uploadCoursesAll(result.courses, ctid, appId, tok, deviceId)
+                                                                    }
                                                                 }
                                                                 importState = ImportState.Success("导入成功")
                                                             } catch (e: Exception) {

@@ -332,6 +332,7 @@ public class ApiClient {
 
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
+            if (resp.code() == 401) throw new UnauthorizedException("Token expired");
             if (!resp.isSuccessful()) throw new Exception(resp.code() + ": " + raw);
             JSONObject json = new JSONObject(raw);
 
@@ -374,8 +375,9 @@ public class ApiClient {
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
             if (!resp.isSuccessful()) {
-                if (resp.code() == 401 || resp.code() == 500) {
-                    throw new Exception("HTTP " + resp.code() + ": 认证失效，请重新获取用户信息");
+                if (resp.code() == 401) throw new UnauthorizedException("Token expired");
+                if (resp.code() == 500) {
+                    throw new Exception("HTTP 500: 认证失效，请重新获取用户信息");
                 }
                 throw new Exception("请求课表列表失败(HTTP " + resp.code() + ")");
             }
@@ -466,8 +468,10 @@ public class ApiClient {
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful())
+            if (!resp.isSuccessful()) {
+                if (resp.code() == 401) throw new UnauthorizedException("Token expired");
                 throw new Exception("新建课表请求失败(HTTP " + resp.code() + ")");
+            }
             JSONObject json = new JSONObject(raw);
             if (json.optInt("code", -1) != 0)
                 throw new Exception(json.optString("desc", "新建课表响应错误"));
@@ -543,8 +547,10 @@ public class ApiClient {
                 .put(RequestBody.create(body.toString(), JSON_TYPE))
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
-            if (!resp.isSuccessful())
+            if (!resp.isSuccessful()) {
+                if (resp.code() == 401) throw new UnauthorizedException("Token expired");
                 throw new Exception("同步课表设置失败(HTTP " + resp.code() + ")");
+            }
         }
     }
 
@@ -566,8 +572,10 @@ public class ApiClient {
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful())
+            if (!resp.isSuccessful()) {
+                if (resp.code() == 401) throw new UnauthorizedException("Token expired");
                 throw new Exception("切换课表失败(HTTP " + resp.code() + "): " + raw);
+            }
             JSONObject json = new JSONObject(raw);
             int code = json.optInt("code", -1);
             if (code != 0 && code != 200)
@@ -608,5 +616,10 @@ public class ApiClient {
                 .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36")
                 .build();
         CLIENT.newCall(req).enqueue(callback);
+    }
+    public static class UnauthorizedException extends Exception {
+        public UnauthorizedException(String message) {
+            super(message);
+        }
     }
 }

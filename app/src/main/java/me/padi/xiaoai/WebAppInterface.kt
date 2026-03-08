@@ -52,8 +52,8 @@ class WebAppInterface(private val context: Context) {
         if (HostCompat.isLogin()) {
             val intent = Intent(context, ModuleScreen::class.java)
             val loader = context.classLoader
-            val token = HostCompat.getAccessToken(loader = loader)
-            val deviceId = HostCompat.getDeviceId(context, loader = loader)
+            val token = HostCompat.getAccessToken(context, loader)
+            val deviceId = HostCompat.getDeviceId(context, loader)
             
             intent.putExtra("service_token", token)
             intent.putExtra("device_id", deviceId)

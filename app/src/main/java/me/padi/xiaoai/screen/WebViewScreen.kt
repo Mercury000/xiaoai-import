@@ -199,13 +199,33 @@ private fun WebViewScreenContent(intent: Intent) {
                              return@launch
                         }
 
-                        val ctid = ApiClient.createTable(tableName.ifBlank { "提取课表" }, appId, serviceToken, deviceId)
+                        val loader = context.classLoader
+                        suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
+                            val token = HostCompat.getAccessToken(context, loader) ?: ""
+                            return try {
+                                block(token)
+                            } catch (e: ApiClient.UnauthorizedException) {
+                                val newToken = HostCompat.getAccessToken(context, loader) ?: ""
+                                block(newToken)
+                            }
+                        }
 
-                        val fromCtId = ApiClient.fetchTables(appId, serviceToken, deviceId)
-                            .firstOrNull { it.current == 1 }?.id ?: 0L
-                        ApiClient.switchTable(fromCtId, ctid, appId, serviceToken, deviceId)
+                        val ctid = runWithRetry { tok ->
+                            ApiClient.createTable(tableName.ifBlank { "提取课表" }, appId, tok, deviceId)
+                        }
 
-                        ApiClient.uploadCoursesAll(courses, ctid, appId, serviceToken, deviceId)
+                        val fromCtId = runWithRetry { tok ->
+                            ApiClient.fetchTables(appId, tok, deviceId)
+                                .firstOrNull { it.current == 1 }?.id ?: 0L
+                        }
+                        
+                        runWithRetry { tok ->
+                            ApiClient.switchTable(fromCtId, ctid, appId, tok, deviceId)
+                        }
+
+                        runWithRetry { tok ->
+                            ApiClient.uploadCoursesAll(courses, ctid, appId, tok, deviceId)
+                        }
                         
                         withContext(Dispatchers.Main) {
                             importState = ImportState.Success("导入成功")
@@ -407,11 +427,26 @@ private fun WebViewScreenContent(intent: Intent) {
                                                     coroutineScope.launch {
                                                         try {
                                                             importState = ImportState.Parsing
+                                                            val loader = context.classLoader
+                                                            suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
+                                                                val token = HostCompat.getAccessToken(context, loader) ?: ""
+                                                                return try {
+                                                                    block(token)
+                                                                } catch (e: ApiClient.UnauthorizedException) {
+                                                                    val newToken = HostCompat.getAccessToken(context, loader) ?: ""
+                                                                    block(newToken)
+                                                                }
+                                                            }
+                                                            
                                                             val ctid = withContext(Dispatchers.IO) {
-                                                                ApiClient.createTable(tableName.trim(), appId, serviceToken, deviceId)
+                                                                runWithRetry { tok ->
+                                                                    ApiClient.createTable(tableName.trim(), appId, tok, deviceId)
+                                                                }
                                                             }
                                                             withContext(Dispatchers.IO) {
-                                                                ApiClient.uploadCoursesAll(result.courses, ctid, appId, serviceToken, deviceId)
+                                                                runWithRetry { tok ->
+                                                                    ApiClient.uploadCoursesAll(result.courses, ctid, appId, tok, deviceId)
+                                                                }
                                                             }
                                                             importState = ImportState.Success("AI解析并导入成功")
                                                         } catch (e: Exception) {

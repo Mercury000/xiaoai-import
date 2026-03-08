@@ -27,7 +27,28 @@ object VoiceAssistHook : YukiBaseHooker() {
             parameterCount = 1
         }.hook {
             after {
-                val loader = instance<Context>().classLoader
+                val context = instance<Context>()
+                val loader = context.classLoader
+                val hostPackage = context.packageName
+                val hostVersion = try {
+                    context.packageManager.getPackageInfo(hostPackage, 0).versionName
+                } catch (e: Exception) { "unknown" } ?: "unknown"
+                val sourceDir = context.applicationInfo.sourceDir
+
+                // 动态解析 Token 类名
+                val tokenClassName = SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "token_class") {
+                    SmaliAnalyzer.findTokenClass(it, sourceDir)
+                } ?: "c30.b"
+
+                // 动态解析设备 ID 类名
+                val deviceClassName = SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "device_class") {
+                    SmaliAnalyzer.findDeviceClass(it, sourceDir)
+                } ?: "q70.j"
+
+                // 动态解析新版 WebView 类名
+                val webViewClassName = SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "webview_helper_class") {
+                    SmaliAnalyzer.findWebViewHelperClass(it, sourceDir)
+                } ?: "j80.o"
 
                 // Hook AiWebActivity.onCreate → 注入模块资源
                 "com.xiaomi.voiceassistant.web.container.AiWebActivity"
@@ -37,27 +58,24 @@ object VoiceAssistHook : YukiBaseHooker() {
                         parameterCount = 1
                     }.hook {
                         after {
-                            val context = instance<Context>()
-                            XpHelper.injectResourcesToContext(context)
+                            val ctx = instance<Context>()
+                            XpHelper.injectResourcesToContext(ctx)
                         }
                     }
 
-                // Hook 新版 WebView 宿主类 Lj80/o; → 注入 JS 桥接
-                // 类名为混淆名，需与新版 APK 对应
+                // Hook 新版 WebView 宿主类 → 注入 JS 桥接
                 try {
-                    "j80.o".toClass(loader).resolve()
+                    webViewClassName.toClass(loader).resolve()
                         .firstMethod {
                             name = "onCreate"
                             parameterCount = 1
                         }.hook {
                             after {
-                                val context = instance<Context>()
-                                XpHelper.injectResourcesToContext(context)
-                                // WebAppInterface 由 WebViewHook 在 createWebView after 里注入
+                                val ctx = instance<Context>()
+                                XpHelper.injectResourcesToContext(ctx)
                             }
                         }
                 } catch (e: Exception) {
-                    // 类名混淆可能变化，由 WebViewHook 的 DefaultWebCreator hook 兜底
                 }
             }
         }

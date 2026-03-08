@@ -20,6 +20,10 @@ fun Context.writablePrefs() = getSharedPreferences(packageName + "_preferences",
 object HostCompat {
     const val HOST_PACKAGE = "com.miui.voiceassist"
 
+    private fun getCachedClassName(context: Context?, key: String, default: String): String {
+        return context?.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)?.getString(key, default) ?: default
+    }
+
     fun isLogin(): Boolean = true // TODO: 实现真实的登录检查
 
     fun getAppId(): String = "326813440150602752"
@@ -32,8 +36,9 @@ object HostCompat {
     fun getAccessToken(context: Context? = null, loader: ClassLoader? = null): String? {
         if (loader != null) {
             try {
-                // 参考 XiaoaiHooker.java: c30.b.getOauthV2AccessToken(false)
-                val loginMgrClass = loader.loadClass("c30.b")
+                // 动态获取类名
+                val className = getCachedClassName(context, "token_class", "c30.b")
+                val loginMgrClass = loader.loadClass(className)
                 var instance: Any? = null
                 try {
                     instance = loginMgrClass.newInstance()
@@ -59,7 +64,8 @@ object HostCompat {
             } catch (e: Exception) {
                 // 如果方法不存在或反射失败，尝试直接读取字段 f (如果它是 token)
                 try {
-                    val loginMgrClass = loader.loadClass("c30.b")
+                    val className = getCachedClassName(context, "token_class", "c30.b")
+                    val loginMgrClass = loader.loadClass(className)
                     val fieldA = loginMgrClass.getDeclaredField("a")
                     fieldA.isAccessible = true
                     val instance = fieldA.get(null)
@@ -79,8 +85,9 @@ object HostCompat {
     fun getDeviceId(context: Context, loader: ClassLoader? = null): String? {
         if (loader != null) {
             try {
-                // 参考 XiaoaiHooker.java: q70.j.getDeviceId(Context)
-                val deviceMgrClass = loader.loadClass("q70.j")
+                // 动态获取类名
+                val className = getCachedClassName(context, "device_class", "q70.j")
+                val deviceMgrClass = loader.loadClass(className)
                 val method = deviceMgrClass.getDeclaredMethod("getDeviceId", Context::class.java)
                 method.isAccessible = true
                 val result = method.invoke(null, context)
