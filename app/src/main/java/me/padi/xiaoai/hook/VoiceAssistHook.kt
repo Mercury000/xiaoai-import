@@ -32,7 +32,6 @@ object VoiceAssistHook : YukiBaseHooker() {
                 val loader = context.classLoader
                 // 保存宿主 ClassLoader，供模块 Activity 中的 token 刷新使用
                 HostCompat.hostLoader = loader
-                android.util.Log.i("XiaoAiKeBiao", "VoiceAssistHook: hostLoader set, pkg=${context.packageName}, loader=$loader")
                 val hostPackage = context.packageName
                 val hostVersion = try {
                     context.packageManager.getPackageInfo(hostPackage, 0).versionName
@@ -43,13 +42,11 @@ object VoiceAssistHook : YukiBaseHooker() {
                 val tokenClassName = SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "token_class") {
                     SmaliAnalyzer.findTokenClass(it, sourceDir)
                 } ?: "c30.b"
-                android.util.Log.i("XiaoAiKeBiao", "VoiceAssistHook: tokenClassName=$tokenClassName")
 
                 // 动态解析设备 ID 类名
                 val deviceClassName = SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "device_class") {
                     SmaliAnalyzer.findDeviceClass(it, sourceDir)
                 } ?: "q70.j"
-                android.util.Log.i("XiaoAiKeBiao", "VoiceAssistHook: deviceClassName=$deviceClassName")
 
                 // 动态解析新版 WebView 类名
                 val webViewClassName = SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "webview_helper_class") {

@@ -426,8 +426,6 @@ private fun SchoolListScreenContent(
                                         val appId = HostCompat.getAppId()
                                         val serviceToken = HostCompat.getAccessToken(context, HostCompat.hostLoader ?: context.classLoader)
                                         val deviceId = HostCompat.getDeviceId(context, HostCompat.hostLoader ?: context.classLoader)
-                                        val devIdMasked = if (!deviceId.isNullOrBlank()) deviceId.take(8) + "..." else "<blank>"
-                                        android.util.Log.i("XiaoAiKeBiao", "SchoolScreen earlyCheck: deviceId=$devIdMasked")
                                         if (serviceToken.isNullOrBlank() || deviceId.isNullOrBlank()) {
                                             importState = ImportState.Error("获取令牌失败")
                                             return@launch
@@ -452,21 +450,17 @@ private fun SchoolListScreenContent(
                                                             try {
                                                                 importState = ImportState.Parsing
                                                                 val loader = HostCompat.hostLoader ?: context.classLoader
-                                                                android.util.Log.i("XiaoAiKeBiao", "SchoolScreen: hostLoader=${HostCompat.hostLoader != null}, effectiveLoader=$loader")
-                                                                
+
                                                                 suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
                                                                     val token = withContext(Dispatchers.IO) {
                                                                         HostCompat.getAccessToken(context, loader)
                                                                     } ?: ""
-                                                                    android.util.Log.i("XiaoAiKeBiao", "SchoolScreen runWithRetry: token=${if (token.length > 12) token.take(10)+"..."+token.takeLast(4) else "<short=${"${token.length}"}>"}")
                                                                     return try {
                                                                         block(token)
                                                                     } catch (e: ApiClient.UnauthorizedException) {
-                                                                        android.util.Log.w("XiaoAiKeBiao", "SchoolScreen runWithRetry: 401 caught, retrying with forceRefresh=true")
                                                                         val newToken = withContext(Dispatchers.IO) {
                                                                             HostCompat.getAccessToken(context, loader, forceRefresh = true)
                                                                         } ?: ""
-                                                                        android.util.Log.i("XiaoAiKeBiao", "SchoolScreen runWithRetry: newToken=${if (newToken.length > 12) newToken.take(10)+"..."+newToken.takeLast(4) else "<short>"}")
                                                                         block(newToken)
                                                                     }
                                                                 }
