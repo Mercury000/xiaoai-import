@@ -51,6 +51,7 @@ import me.padi.xiaoai.BridgeCallback
 import me.padi.xiaoai.Course
 import me.padi.xiaoai.PromptDialogData
 import me.padi.xiaoai.SingleSelectionDialogData
+import me.padi.xiaoai.CourseRepository
 import org.json.JSONArray
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
@@ -102,6 +103,7 @@ private fun WebViewScreenContent(intent: Intent) {
     val intentUrl = intent.getStringExtra("url") ?: ""
     val intentTitle = intent.getStringExtra("title") ?: "导入课程表"
     val intentScript = intent.getStringExtra("script") ?: ""
+    val intentText = intent.getStringExtra("text") ?: ""
     val context = LocalContext.current
     
     var url by remember { mutableStateOf(intentUrl.ifBlank { HookEntry.prefs.getString("jw_webview_url", "") }) }
@@ -189,47 +191,7 @@ private fun WebViewScreenContent(intent: Intent) {
                         }
 
                         val appId = HostCompat.getAppId()
-                        val loader = HostCompat.hostLoader ?: context.classLoader
-                        val serviceToken = HostCompat.getAccessToken(context, loader)
-                        val deviceId = HostCompat.getDeviceId(context, loader)
-                        if (serviceToken.isNullOrBlank() || deviceId.isNullOrBlank()) {
-                             withContext(Dispatchers.Main) {
-                                 importState = ImportState.Error("无法获取令牌")
-                                 callback(false, "无法获取令牌")
-                             }
-                             return@launch
-                        }
-
-                        suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
-                            val token = withContext(Dispatchers.IO) {
-                                HostCompat.getAccessToken(context, loader)
-                            } ?: ""
-                            return try {
-                                block(token)
-                            } catch (e: ApiClient.UnauthorizedException) {
-                                val newToken = withContext(Dispatchers.IO) {
-                                    HostCompat.getAccessToken(context, loader, forceRefresh = true)
-                                } ?: ""
-                                block(newToken)
-                            }
-                        }
-
-                        val ctid = runWithRetry { tok ->
-                            ApiClient.createTable(tableName.ifBlank { "提取课表" }, appId, tok, deviceId)
-                        }
-
-                        val fromCtId = runWithRetry { tok ->
-                            ApiClient.fetchTables(appId, tok, deviceId)
-                                .firstOrNull { it.current == 1 }?.id ?: 0L
-                        }
-                        
-                        runWithRetry { tok ->
-                            ApiClient.switchTable(fromCtId, ctid, appId, tok, deviceId)
-                        }
-
-                        runWithRetry { tok ->
-                            ApiClient.uploadCoursesAll(courses, ctid, appId, tok, deviceId)
-                        }
+                        CourseRepository.importCourses(context, appId, tableName.ifBlank { "提取课表" }, courses)
                         
                         withContext(Dispatchers.Main) {
                             importState = ImportState.Success("导入成功")
@@ -335,6 +297,9 @@ private fun WebViewScreenContent(intent: Intent) {
             Spacer(modifier = Modifier.height(8.dp))
 
             // 状态显示
+            if (intentText.isNotBlank()) {
+                Text(intentText, color = MiuixTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+            }
             when (val state = importState) {
                 is ImportState.Loading -> {
                     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -430,41 +395,21 @@ private fun WebViewScreenContent(intent: Intent) {
                                             object : ApiClient.ParseCallback {
                                                 override fun onUpdate(reasoning: String, content: String) {}
                                                 override fun onSuccess(result: ParseResult) {
-                                                    coroutineScope.launch {
-                                                        try {
-                                                            importState = ImportState.Parsing
-                                                            val loader = HostCompat.hostLoader ?: context.classLoader
-                                                            suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
-                                                                val token = withContext(Dispatchers.IO) {
-                                                                    HostCompat.getAccessToken(context, loader)
-                                                                } ?: ""
-                                                                return try {
-                                                                    block(token)
-                                                                } catch (e: ApiClient.UnauthorizedException) {
-                                                                    val newToken = withContext(Dispatchers.IO) {
-                                                                        HostCompat.getAccessToken(context, loader, forceRefresh = true)
-                                                                    } ?: ""
-                                                                    block(newToken)
-                                                                }
-                                                            }
-                                                            
-                                                            val ctid = withContext(Dispatchers.IO) {
-                                                                runWithRetry { tok ->
-                                                                    ApiClient.createTable(tableName.trim(), appId, tok, deviceId)
-                                                                }
-                                                            }
-                                                            withContext(Dispatchers.IO) {
-                                                                runWithRetry { tok ->
-                                                                    ApiClient.uploadCoursesAll(result.courses, ctid, appId, tok, deviceId)
-                                                                }
-                                                            }
-                                                            importState = ImportState.Success("AI解析并导入成功")
-                                                            HostCompat.isImportFinished = true
-                                                        } catch (e: Exception) {
-                                                            importState = ImportState.Error(e.message ?: "上传核心失败")
-                                                        }
-                                                    }
+                                            coroutineScope.launch {
+                                                try {
+                                                    importState = ImportState.Parsing
+                                                    CourseRepository.importCourses(
+                                                        context,
+                                                        appId,
+                                                        tableName.trim(),
+                                                        result.courses
+                                                    )
+                                                    importState = ImportState.Success("AI解析并导入成功")
+                                                } catch (e: Exception) {
+                                                    importState = ImportState.Error(e.message ?: "导入报错")
                                                 }
+                                            }
+                                        }
                                                 override fun onError(e: Exception) {
                                                     coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
                                                 }

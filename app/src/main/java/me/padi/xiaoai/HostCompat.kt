@@ -4,13 +4,6 @@ import android.content.Context
 import top.sacz.xphelper.XpHelper
 import me.padi.xiaoai.hook.HookEntry
 
-fun Context.readRawFile(resId: Int): String? {
-    return try {
-        resources.openRawResource(resId).bufferedReader().use { it.readText() }
-    } catch (e: Exception) {
-        null
-    }
-}
 
 fun Context.writablePrefs() = getSharedPreferences(packageName + "_preferences", Context.MODE_PRIVATE)
 

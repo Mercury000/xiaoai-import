@@ -20,6 +20,9 @@ import me.padi.xiaoai.OkHttpClientManager
 import me.padi.xiaoai.get
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
+import me.padi.xiaoai.CourseRepository
+import me.padi.xiaoai.parseYamlList
+import me.padi.xiaoai.launchImportActivity
 import me.padi.xiaoai.screen.AiScreen
 import me.padi.xiaoai.screen.SchoolScreen
 import me.padi.xiaoai.screen.WebViewScreen
@@ -30,6 +33,9 @@ import android.widget.Toast
 import top.sacz.xphelper.ext.toClass
 import java.io.IOException
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 fun importCourseFormJw(context: Context) {
     BottomMenu.show(
@@ -60,7 +66,7 @@ fun importCourseFormJw(context: Context) {
 
                         WaitDialog.show("正在导入，请稍候...")
 
-                        Thread {
+                        CoroutineScope(Dispatchers.Main).launch {
                             try {
                                 val act = context as Activity
                                 val json = JSONObject(inputStr)
@@ -72,90 +78,66 @@ fun importCourseFormJw(context: Context) {
                                         WaitDialog.dismiss()
                                         TipDialog.show("课表名称不能为空")
                                     }
-                                    return@Thread
+                                    return@launch
                                 }
-
+    
                                 if (coursesArray == null || coursesArray.length() == 0) {
                                     act.runOnUiThread {
                                         WaitDialog.dismiss()
                                         TipDialog.show("课程列表不能为空")
                                     }
-                                    return@Thread
+                                    return@launch
                                 }
 
-                                val appId = HostCompat.getAppId()
-                                val serviceToken = HostCompat.getAccessToken()
-                                val deviceId = HostCompat.getDeviceId(context)
+                                    val courses = mutableListOf<Course>()
+                                    for (i in 0 until coursesArray.length()) {
+                                        val courseJson = coursesArray.getJSONObject(i)
+                                        val c = Course()
+                                        c.name = courseJson.optString("name", "").trim()
+                                        c.teacher = courseJson.optString("teacher", "").trim()
+                                        c.position = courseJson.optString("location", "").trim()
+                                        c.day = courseJson.optInt("weekday", 1)
+                                        val start = courseJson.optInt("startSection", 1)
+                                        val end = courseJson.optInt("endSection", 2)
+                                        c.sections = (start..end).joinToString(",")
+                                        val weeksArray = courseJson.optJSONArray("weeks")
+                                        c.weeks = if (weeksArray != null) {
+                                            buildString {
+                                                for (j in 0 until weeksArray.length()) {
+                                                    append(weeksArray.getInt(j))
+                                                    if (j != weeksArray.length() - 1) append(",")
+                                                }
+                                            }
+                                        } else ""
+                                        val colorIndex = if (c.name.isNotEmpty()) {
+                                            kotlin.math.abs(c.name.hashCode() % COLOR_PRESETS.size)
+                                        } else {
+                                            i % COLOR_PRESETS.size
+                                        }
+                                        c.style = COLOR_PRESETS[colorIndex]
+                                        courses.add(c)
+                                    }
+                                    
+                                    act.runOnUiThread {
+                                        WaitDialog.show("正在导入...")
+                                    }
+    
+                                    val appId = HostCompat.getAppId()
+                                    CourseRepository.importCourses(context, appId, tableName, courses)
 
-                                if (serviceToken == null || deviceId == null) {
                                     act.runOnUiThread {
                                         WaitDialog.dismiss()
-                                        TipDialog.show("无法获取服务令牌或设备ID")
+                                        TipDialog.show("导入成功")
                                     }
-                                    return@Thread
-                                }
-
-                                val courses = mutableListOf<Course>()
-                                for (i in 0 until coursesArray.length()) {
-                                    val courseJson = coursesArray.getJSONObject(i)
-                                    val c = Course()
-                                    c.name = courseJson.optString("name", "").trim()
-                                    c.teacher = courseJson.optString("teacher", "").trim()
-                                    c.position = courseJson.optString("location", "").trim()
-                                    c.day = courseJson.optInt("weekday", 1)
-                                    val start = courseJson.optInt("startSection", 1)
-                                    val end = courseJson.optInt("endSection", 2)
-                                    c.sections = (start..end).joinToString(",")
-                                    val weeksArray = courseJson.optJSONArray("weeks")
-                                    c.weeks = if (weeksArray != null) {
-                                        buildString {
-                                            for (j in 0 until weeksArray.length()) {
-                                                append(weeksArray.getInt(j))
-                                                if (j != weeksArray.length() - 1) append(",")
-                                            }
-                                        }
-                                    } else ""
-                                    val colorIndex = if (c.name.isNotEmpty()) {
-                                        abs(c.name.hashCode() % COLOR_PRESETS.size)
-                                    } else {
-                                        i % COLOR_PRESETS.size
-                                    }
-                                    c.style = COLOR_PRESETS[colorIndex]
-                                    courses.add(c)
-                                }
-
-                                val loader = context.classLoader
-                                fun <T> runWithRetry(block: (String) -> T): T {
-                                    val token = HostCompat.getAccessToken(context, loader) ?: ""
-                                    return try {
-                                        block(token)
-                                    } catch (e: ApiClient.UnauthorizedException) {
-                                        val newToken = HostCompat.getAccessToken(context, loader, true) ?: ""
-                                        block(newToken)
-                                    }
-                                }
-
-                                val tables = runWithRetry { tok -> ApiClient.fetchTables(appId, tok, deviceId) }
-                                val fromCtId = tables.firstOrNull { it.current == 1 }?.id ?: 0L
-
-                                val ctid = runWithRetry { tok -> ApiClient.createTable(tableName, appId, tok, deviceId) }
-                                runWithRetry { tok -> ApiClient.switchTable(fromCtId, ctid, appId, tok, deviceId) }
-
-                                runWithRetry { tok -> ApiClient.uploadCoursesAll(courses, ctid, appId, tok, deviceId) }
-
-                                act.runOnUiThread {
-                                    WaitDialog.dismiss()
-                                    TipDialog.show("导入成功")
-                                }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                                 val act = context as Activity
                                 act.runOnUiThread {
                                     WaitDialog.dismiss()
-                                    TipDialog.show("失败: ${e::class.java.simpleName}", WaitDialog.TYPE.ERROR)
+                                    TipDialog.show("失败: ${e.message}", WaitDialog.TYPE.ERROR)
                                 }
                             }
-                        }.start()
+                        }
                         false
                     }.show()
                 }
@@ -194,55 +176,6 @@ fun importCourseFormJw(context: Context) {
         }
 }
 
-private fun parseYamlList(content: String): List<Map<String, String>> {
-    val items = mutableListOf<Map<String, String>>()
-    var currentItem = mutableMapOf<String, String>()
-    
-    val lines = content.lines()
-    for (line in lines) {
-        val trimmed = line.trim()
-        if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-        
-        if (trimmed.startsWith("- ")) {
-            if (currentItem.isNotEmpty()) {
-                items.add(currentItem)
-                currentItem = mutableMapOf()
-            }
-            // 处理首行
-            val pair = extractYamlPair(trimmed.substring(2))
-            if (pair != null) currentItem[pair.first] = pair.second
-        } else if (trimmed.contains(":")) {
-            val pair = extractYamlPair(trimmed)
-            if (pair != null) currentItem[pair.first] = pair.second
-        }
-    }
-    if (currentItem.isNotEmpty()) items.add(currentItem)
-    return items
-}
-
-private fun extractYamlPair(line: String): Pair<String, String>? {
-    val colonIndex = line.indexOf(":")
-    if (colonIndex == -1) return null
-    
-    val key = line.substring(0, colonIndex).trim()
-    var valuePart = line.substring(colonIndex + 1).trim()
-    
-    // 去掉行尾注释
-    if (valuePart.contains("#")) {
-        valuePart = valuePart.substring(0, valuePart.indexOf("#")).trim()
-    }
-    
-    // 去掉引号
-    val value = if (valuePart.startsWith("\"") && valuePart.endsWith("\"")) {
-        valuePart.substring(1, valuePart.length - 1)
-    } else if (valuePart.startsWith("'") && valuePart.endsWith("'")) {
-        valuePart.substring(1, valuePart.length - 1)
-    } else {
-        valuePart
-    }
-    
-    return key to value
-}
 
 private fun handleShiguangImport(context: Context, responseBody: String) {
     val activity = context as Activity
@@ -353,15 +286,6 @@ private fun handleCommonImport(context: Context, type: String, responseBody: Str
     }
 }
 
-private fun launchImportActivity(context: Context, url: String, title: String, text: String, script: String) {
-    val intent = Intent(context, WebViewScreen::class.java).apply {
-        putExtra("url", url)
-        putExtra("title", title)
-        putExtra("script", "(async function () {${script}})();")
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    context.startActivity(intent)
-}
 
 fun queryScoreFormSchool(context: Context) {
     val activity = context as Activity

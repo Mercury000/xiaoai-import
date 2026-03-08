@@ -69,4 +69,3 @@ class WebAppInterface(private val context: Context) {
     }
 }
 
-fun Context.proxyActivity(): String = "com.xiaomi.voiceassistant.web.container.AiWebActivity"
