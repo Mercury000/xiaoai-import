@@ -1,5 +1,8 @@
 package me.padi.xiaoai.screen
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -85,7 +89,8 @@ data class SchoolData(
     val type: String,
     val url: String,
     val importType: String,
-    val sortKey: String
+    val sortKey: String,
+    val isPinned: Boolean = false
 )
 
 enum class SchoolImportType {
@@ -97,32 +102,66 @@ class SchoolScreen : BaseActivity() {
     private val schoolList = mutableStateListOf<SchoolData>()
     private var isRefreshing by mutableStateOf(false)
 
+    companion object {
+        private const val PREF_NAME = "shiguang_cache"
+        private const val CACHE_KEY_YAML = "root_index_yaml"
+        private const val CACHE_KEY_TS   = "root_index_ts"
+        /** 缓存有效期 6 小时；强制刷新时忽略 */
+        private const val CACHE_TTL_MS   = 6 * 60 * 60 * 1000L
+        private const val REMOTE_URL =
+            "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        loadSchoolList()
+        loadSchoolList(forceRefresh = false)
 
         setContent {
             MiuixTheme {
-                SchoolListScreenContent(schoolList, isRefreshing) { loadSchoolList() }
+                SchoolListScreenContent(schoolList, isRefreshing) { loadSchoolList(forceRefresh = true) }
             }
         }
     }
 
-    private fun loadSchoolList() {
-        // 初始加载本地作为兜底
+    /**
+     * 加载学校列表。
+     * - 始终先以本地 school.json 作兜底。
+     * - forceRefresh=false：优先读本地缓存（6h 内有效），缓存过期或不存在则拉远程。
+     * - forceRefresh=true ：直接拉远程，跳过缓存检查（用户点击"刷新"按钮）。
+     */
+    private fun loadSchoolList(forceRefresh: Boolean = false) {
+        // 1. 本地 JSON 兜底
         val localJson = readRawFile(R.raw.school) ?: ""
         parseAndPopulateList(localJson)
-        
-        // 尝试从拾光官方仓库拉取最新 root_index.yaml
+
+        val prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+
+        // 2. 非强制刷新时尝试从缓存恢复
+        if (!forceRefresh) {
+            val cached = prefs.getString(CACHE_KEY_YAML, null)
+            val ts     = prefs.getLong(CACHE_KEY_TS, 0L)
+            if (!cached.isNullOrBlank()) {
+                parseAndPopulateList(cached)
+                // 缓存仍新鲜 → 不发网络请求，直接返回
+                if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
+                    return
+                }
+            }
+        }
+
+        // 3. 拉取远程，更新缓存并刷新 UI
         isRefreshing = true
-        val remoteUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
-        OkHttpClientManager.get(remoteUrl, onSuccess = { response ->
+        OkHttpClientManager.get(REMOTE_URL, onSuccess = { response ->
             try {
                 val remoteContent = response.body.string()
                 if (remoteContent.isNotBlank()) {
-                    // 必须切回主线程才能修改 Compose 状态，触发重组
+                    // 持久化到缓存
+                    prefs.edit()
+                        .putString(CACHE_KEY_YAML, remoteContent)
+                        .putLong(CACHE_KEY_TS, System.currentTimeMillis())
+                        .apply()
                     runOnUiThread { parseAndPopulateList(remoteContent) }
                 }
             } catch (e: Exception) {
@@ -152,7 +191,8 @@ class SchoolScreen : BaseActivity() {
                         type = "拾光适配",
                         url = school["resource_folder"] ?: "",
                         importType = "shiguang_official",
-                        sortKey = schoolSortKey
+                        sortKey = schoolSortKey,
+                        isPinned = (schoolSortKey == "#")
                     ))
                 }
             } else {
@@ -230,16 +270,17 @@ private fun extractYamlPair(line: String): Pair<String, String>? {
     val colonIndex = line.indexOf(":")
     if (colonIndex == -1) return null
     val key = line.substring(0, colonIndex).trim()
-    var valuePart = line.substring(colonIndex + 1).trim()
-    if (valuePart.contains("#")) {
-        valuePart = valuePart.substring(0, valuePart.indexOf("#")).trim()
-    }
-    val value = if (valuePart.startsWith("\"") && valuePart.endsWith("\"")) {
-        valuePart.substring(1, valuePart.length - 1)
-    } else if (valuePart.startsWith("'") && valuePart.endsWith("'")) {
-        valuePart.substring(1, valuePart.length - 1)
+    val valuePart = line.substring(colonIndex + 1).trim()
+    // 引号内可能含 #（如 initial: "#"），必须先找闭合引号，不能直接 stripComment
+    val value: String = if (valuePart.startsWith("\"") || valuePart.startsWith("'")) {
+        val q = valuePart[0]
+        val closing = valuePart.indexOf(q, 1)
+        // 找到闭合引号则提取内容，找不到则去掉首引号
+        if (closing > 0) valuePart.substring(1, closing) else valuePart.drop(1)
     } else {
-        valuePart
+        // 不带引号：截掉 # 注释
+        val hashIdx = valuePart.indexOf('#')
+        if (hashIdx >= 0) valuePart.substring(0, hashIdx).trim() else valuePart
     }
     return key to value
 }
@@ -275,13 +316,19 @@ private fun SchoolListScreenContent(
     onRefresh: () -> Unit
 ) {
     var searchText by remember { mutableStateOf("") }
-    val filteredSchoolList = remember(searchText, schoolList) {
-        if (searchText.isBlank()) schoolList
-        else schoolList.filter { it.name.contains(searchText, ignoreCase = true) }
+    // 必须用 derivedStateOf 而非 remember(key=schoolList)：
+    // SnapshotStateList.equals(self) 永远返回 true，导致 remember 在 clear()+addAll() 后不重算
+    val filteredSchoolList by remember(searchText) {
+        derivedStateOf {
+            if (searchText.isBlank()) schoolList
+            else schoolList.filter { it.name.contains(searchText, ignoreCase = true) }
+        }
     }
 
-    val groupedSchools = remember(filteredSchoolList) {
-        filteredSchoolList.groupBy { it.sortKey }.toSortedMap()
+    val groupedSchools by remember {
+        derivedStateOf {
+            filteredSchoolList.groupBy { it.sortKey }.toSortedMap()
+        }
     }
 
     var selectedSchool by remember { mutableStateOf<SchoolData?>(null) }
@@ -324,7 +371,7 @@ private fun SchoolListScreenContent(
 
             LazyColumn(modifier = Modifier.weight(1f)) {
                 groupedSchools.forEach { (key, schools) ->
-                    item { SmallTitle(text = key) }
+                    item { SmallTitle(text = if (key == "#") "★ 通用" else key) }
                     items(schools) { school ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
@@ -343,33 +390,26 @@ private fun SchoolListScreenContent(
                                             return@get
                                         }
 
-                                        (context as SchoolScreen).runOnUiThread {
-                                            if (adapters.size == 1) {
-                                                val a = adapters[0]
-                                                val desc = buildString {
-                                                    append(a["description"] ?: "")
-                                                    val maintainer = a["maintainer"]
-                                                    if (!maintainer.isNullOrBlank()) append("\\n\\n贡献者：$maintainer")
-                                                }
-                                                startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", desc)
-                                            } else {
-                                                val subNames: Array<String> = adapters.map {
-                                                    val adapterName = it["adapter_name"] ?: "Unknown"
-                                                    val maintainer = it["maintainer"]
-                                                    if (!maintainer.isNullOrBlank()) "$adapterName  (贡献者：$maintainer)" else adapterName
-                                                }.toTypedArray()
-                                                BottomMenu.show(subNames).setTitle(school.name).setMessage("选择导入方式")
-                                                    .setOnMenuItemClickListener { _, _, subIndex ->
-                                                        val a = adapters[subIndex]
-                                                        val desc = buildString {
-                                                            append(a["description"] ?: "")
-                                                            val maintainer = a["maintainer"]
-                                                            if (!maintainer.isNullOrBlank()) append("\\n\\n贡献者：$maintainer")
-                                                        }
-                                                        startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", desc)
-                                                        false
+                        (context as SchoolScreen).runOnUiThread {
+                                            // 无论适配器数量，总使用 BottomMenu 展示，让用户看到贡献者
+                                            val subNames: Array<String> = adapters.map {
+                                                val adapterName = it["adapter_name"] ?: "Unknown"
+                                                val maintainer = it["maintainer"]
+                                                if (!maintainer.isNullOrBlank()) "$adapterName  (贡献者：$maintainer)" else adapterName
+                                            }.toTypedArray()
+                                            val menuTitle = if (adapters.size == 1) school.name else school.name
+                                            val menuMsg = if (adapters.size == 1) "点击开始导入" else "选择导入方式"
+                                            BottomMenu.show(subNames).setTitle(menuTitle).setMessage(menuMsg)
+                                                .setOnMenuItemClickListener { _, _, subIndex ->
+                                                    val a = adapters[subIndex]
+                                                    val desc = buildString {
+                                                        append(a["description"] ?: "")
+                                                        val maintainer = a["maintainer"]
+                                                        if (!maintainer.isNullOrBlank()) append("\\n\\n贡献者：$maintainer")
                                                     }
-                                            }
+                                                    startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", desc)
+                                                    false
+                                                }
                                         }
                                     }, onError = { e ->
                                         WaitDialog.dismiss()
@@ -383,8 +423,23 @@ private fun SchoolListScreenContent(
                                 }
                             }
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(school.name)
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(school.name, modifier = Modifier.weight(1f))
+                                    if (school.isPinned) {
+                                        Text(
+                                            text = "通用",
+                                            fontSize = 10.sp,
+                                            color = Color.White,
+                                            modifier = Modifier
+                                                .background(MiuixTheme.colorScheme.primary, RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                                 Text(school.type, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface)
                             }
                         }

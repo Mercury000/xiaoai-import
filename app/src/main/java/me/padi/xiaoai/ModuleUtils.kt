@@ -61,21 +61,16 @@ fun parseYamlList(content: String): List<Map<String, String>> {
 private fun extractYamlPair(line: String): Pair<String, String>? {
     val colonIndex = line.indexOf(":")
     if (colonIndex == -1) return null
-    
     val key = line.substring(0, colonIndex).trim()
-    var valuePart = line.substring(colonIndex + 1).trim()
-    
-    if (valuePart.contains("#")) {
-        valuePart = valuePart.substring(0, valuePart.indexOf("#")).trim()
-    }
-    
-    val value = if (valuePart.startsWith("\"") && valuePart.endsWith("\"")) {
-        valuePart.substring(1, valuePart.length - 1)
-    } else if (valuePart.startsWith("'") && valuePart.endsWith("'")) {
-        valuePart.substring(1, valuePart.length - 1)
+    val valuePart = line.substring(colonIndex + 1).trim()
+    // 引号内可能含 #（如 initial: "#"），必须先找闭合引号，不能直接 stripComment
+    val value: String = if (valuePart.startsWith("\"") || valuePart.startsWith("'")) {
+        val q = valuePart[0]
+        val closing = valuePart.indexOf(q, 1)
+        if (closing > 0) valuePart.substring(1, closing) else valuePart.drop(1)
     } else {
-        valuePart
+        val hashIdx = valuePart.indexOf('#')
+        if (hashIdx >= 0) valuePart.substring(0, hashIdx).trim() else valuePart
     }
-    
     return key to value
 }

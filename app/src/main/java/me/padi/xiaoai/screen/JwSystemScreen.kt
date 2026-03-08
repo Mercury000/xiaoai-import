@@ -2,6 +2,7 @@ package me.padi.xiaoai.screen
 
 import android.app.Activity
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -50,10 +51,20 @@ class JwSystemScreen : BaseActivity() {
     private val allItems = mutableStateListOf<JwItem>()
     private var isLoading by mutableStateOf(false)
 
+    companion object {
+        private const val PREF_NAME    = "jw_cache"
+        private const val KEY_COMMON   = "cache_common"
+        private const val KEY_SCHOOLS  = "cache_schools"
+        private const val KEY_SHIGUANG = "cache_shiguang"
+        private const val URL_COMMON   = "https://gitee.com/padi/aishedule/raw/master/system.json"
+        private const val URL_SCHOOLS  = "https://gitee.com/padi/aishedule/raw/master/school.json"
+        private const val URL_SHIGUANG = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        fetchData()
+        fetchData(forceRefresh = false)
         setContent {
             MiuixTheme {
                 Scaffold(
@@ -69,20 +80,21 @@ class JwSystemScreen : BaseActivity() {
         }
     }
 
-    private fun fetchData() {
+    internal fun fetchData(forceRefresh: Boolean = false) {
         isLoading = true
+        val prefs: SharedPreferences = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val systemDeferred = async { fetchCommon() }
-                val schoolDeferred = async { fetchSchools() }
-                val shiguangDeferred = async { fetchShiguang() }
+                val commonDeferred   = async { fetchCommon(prefs, forceRefresh) }
+                val schoolsDeferred  = async { fetchSchools(prefs, forceRefresh) }
+                val shiguangDeferred = async { fetchShiguang(prefs, forceRefresh) }
 
                 val items = mutableListOf<JwItem>()
-                items.addAll(systemDeferred.await())
-                items.addAll(schoolDeferred.await())
+                items.addAll(commonDeferred.await())
+                items.addAll(schoolsDeferred.await())
                 items.addAll(shiguangDeferred.await())
 
-                // Sorting: Common items (isCommon=true) first, then others alphabetically by name
+                // isCommon=true（通用项）置顶，其次按名称
                 val sorted = items.sortedWith(
                     compareByDescending<JwItem> { it.isCommon }
                         .thenBy { it.name.lowercase(Locale.ROOT) }
@@ -103,16 +115,22 @@ class JwSystemScreen : BaseActivity() {
         }
     }
 
-    private suspend fun fetchCommon(): List<JwItem> {
+    /** 从缓存或远程获取 common 系统列表 */
+    private suspend fun fetchCommon(prefs: SharedPreferences, forceRefresh: Boolean): List<JwItem> {
         return try {
-            val resp = OkHttpClientManager.getSync("https://gitee.com/padi/aishedule/raw/master/system.json")
-            val arr = JSONArray(resp)
+            val raw = if (!forceRefresh) prefs.getString(KEY_COMMON, null) else null
+            val json = if (!raw.isNullOrBlank()) raw else {
+                val fetched = OkHttpClientManager.getSync(URL_COMMON)
+                prefs.edit().putString(KEY_COMMON, fetched).apply()
+                fetched
+            }
+            val arr = JSONArray(json)
             List(arr.length()) { i ->
                 val obj = arr.getJSONObject(i)
                 JwItem(
-                    name = obj.optString("name", "Unknown"),
-                    type = JwType.COMMON,
-                    url = obj.optString("url", ""),
+                    name  = obj.optString("name", "Unknown"),
+                    type  = JwType.COMMON,
+                    url   = obj.optString("url", ""),
                     extra = obj.optString("type", ""),
                     isCommon = true
                 )
@@ -122,16 +140,22 @@ class JwSystemScreen : BaseActivity() {
         }
     }
 
-    private suspend fun fetchSchools(): List<JwItem> {
+    /** 从缓存或远程获取学校列表 */
+    private suspend fun fetchSchools(prefs: SharedPreferences, forceRefresh: Boolean): List<JwItem> {
         return try {
-            val resp = OkHttpClientManager.getSync("https://gitee.com/padi/aishedule/raw/master/school.json")
-            val arr = JSONArray(resp)
+            val raw = if (!forceRefresh) prefs.getString(KEY_SCHOOLS, null) else null
+            val json = if (!raw.isNullOrBlank()) raw else {
+                val fetched = OkHttpClientManager.getSync(URL_SCHOOLS)
+                prefs.edit().putString(KEY_SCHOOLS, fetched).apply()
+                fetched
+            }
+            val arr = JSONArray(json)
             List(arr.length()) { i ->
                 val obj = arr.getJSONObject(i)
                 JwItem(
-                    name = obj.optString("name", "Unknown"),
-                    type = JwType.SCHOOL,
-                    url = obj.optString("url", ""),
+                    name  = obj.optString("name", "Unknown"),
+                    type  = JwType.SCHOOL,
+                    url   = obj.optString("url", ""),
                     extra = obj.optString("id", ""),
                     isCommon = false
                 )
@@ -141,19 +165,26 @@ class JwSystemScreen : BaseActivity() {
         }
     }
 
-    private suspend fun fetchShiguang(): List<JwItem> {
+    /** 从缓存或远程获取拾光仓库列表 */
+    private suspend fun fetchShiguang(prefs: SharedPreferences, forceRefresh: Boolean): List<JwItem> {
         return try {
-            val resp = OkHttpClientManager.getSync("https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml")
-            val list = parseYamlList(resp)
-            list.mapNotNull { map ->
-                val name = map["name"] ?: return@mapNotNull null
+            val raw = if (!forceRefresh) prefs.getString(KEY_SHIGUANG, null) else null
+            val yaml = if (!raw.isNullOrBlank()) raw else {
+                val fetched = OkHttpClientManager.getSync(URL_SHIGUANG)
+                prefs.edit().putString(KEY_SHIGUANG, fetched).apply()
+                fetched
+            }
+            parseYamlList(yaml).mapNotNull { map ->
+                val name   = map["name"]   ?: return@mapNotNull null
                 val folder = map["resource_folder"] ?: return@mapNotNull null
-                val isPinned = name == "通用工具" || name == "教务"
+                val id     = map["id"] ?: ""
+                // 名称含"通用"或 id==GLOBAL_TOOLS → 归为通用/置顶
+                val isCommon = name.contains("通用") || id == "GLOBAL_TOOLS"
                 JwItem(
-                    name = name,
-                    type = JwType.SHIGUANG,
+                    name  = name,
+                    type  = JwType.SHIGUANG,
                     extra = folder,
-                    isCommon = isPinned
+                    isCommon = isCommon
                 )
             }
         } catch (e: Exception) {
@@ -163,10 +194,14 @@ class JwSystemScreen : BaseActivity() {
 
     @Composable
     private fun JwSystemContent(paddingValues: PaddingValues) {
+        val context = LocalContext.current
         var searchQuery by remember { mutableStateOf("") }
-        val filteredItems = remember(searchQuery, allItems.size) {
-            if (searchQuery.isBlank()) allItems
-            else allItems.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        // derivedStateOf 追踪快照读，避免 SnapshotStateList.equals(self)==true 导致 remember 不重算
+        val filteredItems by remember(searchQuery) {
+            derivedStateOf {
+                if (searchQuery.isBlank()) allItems
+                else allItems.filter { it.name.contains(searchQuery, ignoreCase = true) }
+            }
         }
 
         Column(
@@ -175,20 +210,36 @@ class JwSystemScreen : BaseActivity() {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            TextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = "搜索学校或系统...",
+            // 搜索框 + 刷新按钮同排
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-            )
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = "搜索学校或系统...",
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { (context as JwSystemScreen).fetchData(forceRefresh = true) },
+                    enabled = !isLoading
+                ) {
+                    Text(if (isLoading) "加载中" else "刷新")
+                }
+            }
 
             if (isLoading && allItems.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             } else {
+                if (isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
+                }
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(filteredItems) { item ->
                         JwItemRow(item)
@@ -226,7 +277,7 @@ class JwSystemScreen : BaseActivity() {
                             Spacer(Modifier.width(8.dp))
                         }
                         val typeLabel = when(item.type) {
-                            JwType.COMMON -> "系统型"
+                            JwType.COMMON -> "自有仓库"
                             JwType.SCHOOL -> "自有仓库"
                             JwType.SHIGUANG -> "拾光仓库"
                         }
@@ -277,10 +328,10 @@ class JwSystemScreen : BaseActivity() {
             }
 
             (context as Activity).runOnUiThread {
-                val subNames = adapters.map { 
+                val subNames = adapters.map {
                     val name = it["adapter_name"] ?: "Unknown"
-                    val contributor = it["contributor"]
-                    if (!contributor.isNullOrBlank()) "$name ($contributor)" else name
+                    val maintainer = it["maintainer"]
+                    if (!maintainer.isNullOrBlank()) "$name  (贡献者：$maintainer)" else name
                 }.toTypedArray()
                 BottomMenu.show(subNames).setTitle(categoryName).setMessage("请选择具体学校/功能")
                     .setSingleSelection()
