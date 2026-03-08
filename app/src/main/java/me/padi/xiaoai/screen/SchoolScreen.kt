@@ -487,6 +487,7 @@ private fun SchoolListScreenContent(
                                                                     }
                                                                 }
                                                                 importState = ImportState.Success("导入成功")
+                                                                HostCompat.isImportFinished = true
                                                             } catch (e: Exception) {
                                                                 importState = ImportState.Error(e.message ?: "导入报错")
                                                             }

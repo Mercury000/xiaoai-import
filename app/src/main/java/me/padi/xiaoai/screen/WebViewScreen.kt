@@ -233,6 +233,7 @@ private fun WebViewScreenContent(intent: Intent) {
                         
                         withContext(Dispatchers.Main) {
                             importState = ImportState.Success("导入成功")
+                            HostCompat.isImportFinished = true
                             callback(true, null)
                         }
                     } catch (e: Exception) {
@@ -249,6 +250,7 @@ private fun WebViewScreenContent(intent: Intent) {
             override fun onTaskCompleted() {
                 coroutineScope.launch {
                     importState = ImportState.Success("导入完成")
+                    HostCompat.isImportFinished = true
                 }
             }
         }
@@ -457,6 +459,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                                                 }
                                                             }
                                                             importState = ImportState.Success("AI解析并导入成功")
+                                                            HostCompat.isImportFinished = true
                                                         } catch (e: Exception) {
                                                             importState = ImportState.Error(e.message ?: "上传核心失败")
                                                         }

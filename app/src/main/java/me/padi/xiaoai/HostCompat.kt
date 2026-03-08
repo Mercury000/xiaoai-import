@@ -28,6 +28,12 @@ object HostCompat {
     @JvmField
     var hostLoader: ClassLoader? = null
 
+    /**
+     * 导入完成标志位，用于在回到 AiWebActivity 时强制刷新一次
+     */
+    @Volatile
+    var isImportFinished: Boolean = false
+
     private fun getCachedClassName(context: Context?, key: String, default: String): String {
         return context?.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)?.getString(key, default) ?: default
     }
