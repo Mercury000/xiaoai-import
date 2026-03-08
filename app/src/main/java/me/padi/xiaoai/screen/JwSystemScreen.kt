@@ -3,6 +3,7 @@ package me.padi.xiaoai.screen
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
+import android.icu.text.Transliterator
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -45,7 +46,8 @@ data class JwItem(
     val type: JwType,
     val url: String = "",
     val extra: String = "", // id for SCHOOL/COMMON, resource_folder for SHIGUANG
-    val isCommon: Boolean = false
+    val isCommon: Boolean = false,
+    val sortKey: String = "#"
 )
 
 class JwSystemScreen : BaseActivity() {
@@ -73,14 +75,96 @@ class JwSystemScreen : BaseActivity() {
         fetchData(forceRefresh = false)
         setContent {
             MiuixTheme {
-                Scaffold(
-                    topBar = {
-                        SmallTopAppBar(
-                            title = "教务系统导入"
+                // 外层 Box 让遮罩能覆盖整屏（含 TopAppBar）
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Scaffold(
+                        topBar = {
+                            SmallTopAppBar(title = "教务系统导入")
+                        }
+                    ) { paddingValues ->
+                        JwSystemContent(paddingValues)
+                    }
+                    // 遮罩层：覆盖整屏含标题栏
+                    if (showAdaptersSheet) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f))
+                                .clickable { showAdaptersSheet = false }
                         )
                     }
-                ) { paddingValues ->
-                    JwSystemContent(paddingValues)
+                    // 底部适配器面板
+                    AnimatedVisibility(
+                        visible = showAdaptersSheet,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        enter = slideInVertically { it },
+                        exit = slideOutVertically { it }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MiuixTheme.colorScheme.surface,
+                                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                                )
+                                .navigationBarsPadding()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .padding(top = 8.dp, bottom = 4.dp)
+                                    .size(width = 40.dp, height = 4.dp)
+                                    .background(
+                                        MiuixTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                                        RoundedCornerShape(2.dp)
+                                    )
+                            )
+                            Text(
+                                text = sheetCategory,
+                                fontSize = 16.sp,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 400.dp)
+                                    .padding(bottom = 8.dp)
+                            ) {
+                                items(sheetAdapters) { adapter ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .clickable {
+                                                showAdaptersSheet = false
+                                                launchShiguangAdapter(this@JwSystemScreen, sheetFolder, adapter)
+                                            }
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                            Text(adapter["adapter_name"] ?: "Unknown", fontSize = 16.sp)
+                                            val maintainer = adapter["maintainer"]
+                                            if (!maintainer.isNullOrBlank()) {
+                                                Text(
+                                                    text = "贡献者：$maintainer",
+                                                    fontSize = 12.sp,
+                                                    color = MiuixTheme.colorScheme.primary
+                                                )
+                                            }
+                                            val desc = adapter["description"]
+                                            if (!desc.isNullOrBlank()) {
+                                                Text(
+                                                    text = desc.replace("\\n", "\n"),
+                                                    fontSize = 11.sp,
+                                                    color = MiuixTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -100,10 +184,12 @@ class JwSystemScreen : BaseActivity() {
                 items.addAll(schoolsDeferred.await())
                 items.addAll(shiguangDeferred.await())
 
-                // isCommon=true（通用项）置顶，其次按名称
+                // 按 sortKey 排序（# 最前），同组内按名称排
                 val sorted = items.sortedWith(
-                    compareByDescending<JwItem> { it.isCommon }
-                        .thenBy { it.name.lowercase(Locale.ROOT) }
+                    compareBy(
+                        { if (it.sortKey == "#") "\u0000" else it.sortKey.lowercase(Locale.ROOT) },
+                        { it.name }
+                    )
                 )
 
                 withContext(Dispatchers.Main) {
@@ -138,7 +224,8 @@ class JwSystemScreen : BaseActivity() {
                     type  = JwType.COMMON,
                     url   = obj.optString("url", ""),
                     extra = obj.optString("type", ""),
-                    isCommon = true
+                    isCommon = true,
+                    sortKey = "#"
                 )
             }
         } catch (e: Exception) {
@@ -156,14 +243,26 @@ class JwSystemScreen : BaseActivity() {
                 fetched
             }
             val arr = JSONArray(json)
+            val trans = try {
+                Transliterator.getInstance("Han-Latin; NFD; [:Nonspacing Mark:] Remove; NFC")
+            } catch (e: Exception) { null }
             List(arr.length()) { i ->
                 val obj = arr.getJSONObject(i)
+                val name = obj.optString("name", "Unknown")
+                val sortKey = run {
+                    val firstCjk = name.firstOrNull { it.code in 0x4E00..0x9FFF }
+                    if (firstCjk != null && trans != null) {
+                        val latin = trans.transliterate(firstCjk.toString())
+                        latin.firstOrNull { it.isLetter() }?.uppercaseChar()?.toString() ?: "#"
+                    } else "#"
+                }
                 JwItem(
-                    name  = obj.optString("name", "Unknown"),
+                    name  = name,
                     type  = JwType.SCHOOL,
                     url   = obj.optString("url", ""),
                     extra = obj.optString("id", ""),
-                    isCommon = false
+                    isCommon = false,
+                    sortKey = sortKey
                 )
             }
         } catch (e: Exception) {
@@ -190,7 +289,8 @@ class JwSystemScreen : BaseActivity() {
                     name  = name,
                     type  = JwType.SHIGUANG,
                     extra = folder,
-                    isCommon = isCommon
+                    isCommon = isCommon,
+                    sortKey = if (isCommon) "#" else (map["initial"] ?: "#")
                 )
             }
         } catch (e: Exception) {
@@ -202,134 +302,56 @@ class JwSystemScreen : BaseActivity() {
     private fun JwSystemContent(paddingValues: PaddingValues) {
         val context = LocalContext.current
         var searchQuery by remember { mutableStateOf("") }
-        val filteredItems by remember(searchQuery) {
+        // 按 sortKey 分组，# 组排最前
+        val groupedItems by remember(searchQuery) {
             derivedStateOf {
-                if (searchQuery.isBlank()) allItems
-                else allItems.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                val filtered = if (searchQuery.isBlank()) allItems
+                    else allItems.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                filtered.groupBy { it.sortKey }
+                    .toSortedMap(compareBy { if (it == "#") "\u0000" else it })
             }
         }
 
-        // 用 Box 叠加：底层是列表，顶层是不新建窗口的遮罩+面板
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
+        ) {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        label = "搜索学校或系统...",
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = { (context as JwSystemScreen).fetchData(forceRefresh = true) },
-                        enabled = !isLoading
-                    ) {
-                        Text(if (isLoading) "加载中" else "刷新")
-                    }
-                }
-
-                if (isLoading && allItems.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else {
-                    if (isLoading) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
-                    }
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(filteredItems) { item ->
-                            JwItemRow(item)
-                        }
-                    }
-                }
-            }
-
-            // 遮罩层（先放，z 顺序低于面板）：点击关闭面板
-            if (showAdaptersSheet) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.4f))
-                        .clickable { showAdaptersSheet = false }
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = "搜索学校或系统...",
+                    modifier = Modifier.weight(1f)
                 )
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { (context as JwSystemScreen).fetchData(forceRefresh = true) },
+                    enabled = !isLoading
+                ) {
+                    Text(if (isLoading) "加载中" else "刷新")
+                }
             }
 
-            // 适配器面板：完全在当前 Compose 树内叠加，不新建任何 Window/Dialog，状态栏不受影响
-            AnimatedVisibility(
-                visible = showAdaptersSheet,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it }
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            MiuixTheme.colorScheme.surface,
-                            RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-                        )
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    // 顶部 handle 条
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(top = 8.dp, bottom = 4.dp)
-                            .size(width = 40.dp, height = 4.dp)
-                            .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.2f), RoundedCornerShape(2.dp))
-                    )
-                    Text(
-                        text = sheetCategory,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .padding(bottom = 8.dp)
-                    ) {
-                        items(sheetAdapters) { adapter ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clickable {
-                                        showAdaptersSheet = false
-                                        launchShiguangAdapter(context, sheetFolder, adapter)
-                                    }
-                            ) {
-                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                    Text(adapter["adapter_name"] ?: "Unknown", fontSize = 16.sp)
-                                    val maintainer = adapter["maintainer"]
-                                    if (!maintainer.isNullOrBlank()) {
-                                        Text(
-                                            text = "贡献者：$maintainer",
-                                            fontSize = 12.sp,
-                                            color = MiuixTheme.colorScheme.primary
-                                        )
-                                    }
-                                    val desc = adapter["description"]
-                                    if (!desc.isNullOrBlank()) {
-                                        Text(
-                                            text = desc.replace("\\n", "\n"),
-                                            fontSize = 11.sp,
-                                            color = MiuixTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
+            if (isLoading && allItems.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                if (isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
+                }
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    groupedItems.forEach { (key, groupItems) ->
+                        item { SmallTitle(text = if (key == "#") "通用教务" else key) }
+                        items(groupItems) { jwItem ->
+                            JwItemRow(jwItem)
                         }
                     }
                 }
