@@ -53,6 +53,7 @@ import me.padi.xiaoai.writablePrefs
 import me.padi.xiaoai.ApiClient
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
+import me.padi.xiaoai.CourseRepository
 import me.padi.xiaoai.R
 import org.json.JSONArray
 import org.json.JSONObject
@@ -448,46 +449,15 @@ private fun SchoolListScreenContent(
                                                     override fun onSuccess(result: ParseResult) {
                                                         coroutineScope.launch {
                                                             try {
-                                                                importState = ImportState.Parsing
-                                                                val loader = HostCompat.hostLoader ?: context.classLoader
-
-                                                                suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
-                                                                    val token = withContext(Dispatchers.IO) {
-                                                                        HostCompat.getAccessToken(context, loader)
-                                                                    } ?: ""
-                                                                    return try {
-                                                                        block(token)
-                                                                    } catch (e: ApiClient.UnauthorizedException) {
-                                                                        val newToken = withContext(Dispatchers.IO) {
-                                                                            HostCompat.getAccessToken(context, loader, forceRefresh = true)
-                                                                        } ?: ""
-                                                                        block(newToken)
-                                                                    }
-                                                                }
-
-                                                                val fromCtId = withContext(Dispatchers.IO) {
-                                                                    runWithRetry { tok ->
-                                                                        ApiClient.fetchTables(appId, tok, deviceId)
-                                                                            .firstOrNull { it.current == 1 }?.id ?: 0L
-                                                                    }
-                                                                }
-                                                                val ctid = withContext(Dispatchers.IO) {
-                                                                    runWithRetry { tok ->
-                                                                        ApiClient.createTable(tableName.trim(), appId, tok, deviceId)
-                                                                    }
-                                                                }
-                                                                withContext(Dispatchers.IO) {
-                                                                    runWithRetry { tok ->
-                                                                        ApiClient.switchTable(fromCtId, ctid, appId, tok, deviceId)
-                                                                    }
-                                                                }
-                                                                withContext(Dispatchers.IO) {
-                                                                    runWithRetry { tok ->
-                                                                        ApiClient.uploadCoursesAll(result.courses, ctid, appId, tok, deviceId)
-                                                                    }
-                                                                }
-                                                                importState = ImportState.Success("导入成功")
-                                                                HostCompat.isImportFinished = true
+                                                                 importState = ImportState.Parsing
+                                                                 CourseRepository.importCourses(
+                                                                     context,
+                                                                     appId,
+                                                                     tableName.trim(),
+                                                                     result.courses,
+                                                                     result.schedule
+                                                                 )
+                                                                 importState = ImportState.Success("导入成功")
                                                             } catch (e: Exception) {
                                                                 importState = ImportState.Error(e.message ?: "导入报错")
                                                             }

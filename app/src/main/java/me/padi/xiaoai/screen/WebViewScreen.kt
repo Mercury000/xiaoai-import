@@ -52,6 +52,7 @@ import me.padi.xiaoai.Course
 import me.padi.xiaoai.PromptDialogData
 import me.padi.xiaoai.SingleSelectionDialogData
 import me.padi.xiaoai.CourseRepository
+import me.padi.xiaoai.ScheduleConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
@@ -136,8 +137,8 @@ private fun WebViewScreenContent(intent: Intent) {
                 importState = ImportState.Parsing
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
-                        val coursesArray = if (coursesJson.trim().startsWith("{")) {
-                            val root = JSONObject(coursesJson)
+                        val root = try { JSONObject(coursesJson) } catch (e: Exception) { null }
+                        val coursesArray = if (root != null) {
                             root.optJSONArray("courses") ?: JSONArray()
                         } else {
                             JSONArray(coursesJson)
@@ -185,13 +186,23 @@ private fun WebViewScreenContent(intent: Intent) {
                                 }
                             } else courseJson.optString("weeks", "")
 
+                            c.sanitizeAndValidate()
                             val colorIndex = if (c.name.isNotEmpty()) kotlin.math.abs(c.name.hashCode() % ApiClient.COLOR_PRESETS.size) else i % ApiClient.COLOR_PRESETS.size
                             c.style = ApiClient.COLOR_PRESETS[colorIndex]
                             courses.add(c)
                         }
 
+                        val schedule = root?.optJSONObject("schedule")?.let { sObj ->
+                            ScheduleConfig().apply {
+                                if (sObj.has("morningNum")) morningNum = sObj.getInt("morningNum")
+                                if (sObj.has("afternoonNum")) afternoonNum = sObj.getInt("afternoonNum")
+                                if (sObj.has("nightNum")) nightNum = sObj.getInt("nightNum")
+                                if (sObj.has("sections")) sections = sObj.optString("sections")
+                            }
+                        }
+
                         val appId = HostCompat.getAppId()
-                        CourseRepository.importCourses(context, appId, tableName.ifBlank { "提取课表" }, courses)
+                        CourseRepository.importCourses(context, appId, tableName.ifBlank { "提取课表" }, courses, schedule)
                         
                         withContext(Dispatchers.Main) {
                             importState = ImportState.Success("导入成功")
@@ -207,8 +218,33 @@ private fun WebViewScreenContent(intent: Intent) {
                     }
                 }
             }
-            override fun onSaveCourseConfig(configJson: String, callback: (Boolean, String?) -> Unit) { callback(true, null) }
-            override fun onSavePresetTimeSlots(timeSlotsJson: String, callback: (Boolean, String?) -> Unit) { callback(true, null) }
+            override fun onSaveCourseConfig(configJson: String, callback: (Boolean, String?) -> Unit) {
+                coroutineScope.launch {
+                    try {
+                        val appId = HostCompat.getAppId()
+                        val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
+                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", configJson, null)
+                        callback(true, null)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        callback(false, e.message)
+                    }
+                }
+            }
+            override fun onSavePresetTimeSlots(timeSlotsJson: String, callback: (Boolean, String?) -> Unit) {
+                coroutineScope.launch {
+                    try {
+                        val appId = HostCompat.getAppId()
+                        val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
+                        val schedule = ScheduleConfig().apply { sections = timeSlotsJson }
+                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", null, schedule)
+                        callback(true, null)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        callback(false, e.message)
+                    }
+                }
+            }
             override fun onTaskCompleted() {
                 coroutineScope.launch {
                     importState = ImportState.Success("导入完成")

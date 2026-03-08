@@ -21,6 +21,7 @@ import me.padi.xiaoai.get
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
 import me.padi.xiaoai.CourseRepository
+import me.padi.xiaoai.ScheduleConfig
 import me.padi.xiaoai.parseYamlList
 import me.padi.xiaoai.launchImportActivity
 import me.padi.xiaoai.screen.AiScreen
@@ -39,7 +40,7 @@ import kotlinx.coroutines.launch
 
 fun importCourseFormJw(context: Context) {
     BottomMenu.show(
-        "指定学校导入", "拾光适配仓库", "星链课表Json导入", "通用教务系统导入", "AI解析导入"
+        "指定学校导入", "拾光适配仓库", "Json导入", "通用教务系统导入", "AI解析导入"
     ).setTitle("提示").setMessage("选择一个导入方式")
         .setOnMenuItemClickListener { dialog, text, index ->
             when (text) {
@@ -52,90 +53,75 @@ fun importCourseFormJw(context: Context) {
                     context.startActivity(intent)
                 }
 
-                "星链课表Json导入" -> {
-                    InputDialog(
-                        "提示", "请输入星链课表分享的Json文本进行导入", "导入", "取消", ""
-                    ).setInputInfo(
-                        InputInfo().setMultipleLines(true).setMAX_LENGTH(Int.MAX_VALUE)
-                    ).setCancelable(false).setOkButton { baseDialog, v, inputStr ->
-
-                        if (inputStr.isBlank()) {
-                            TipDialog.show("请输入Json内容")
-                            return@setOkButton true
-                        }
-
-                        WaitDialog.show("正在导入，请稍候...")
-
+                "Json导入" -> {
+                    val prompt = InputDialog.show("Json导入", "请粘贴符合规范的 Json 数据", "确定", "取消")
+                    prompt.setOkButton { _, _, content ->
+                        if (content.isBlank()) return@setOkButton false
                         CoroutineScope(Dispatchers.Main).launch {
                             try {
-                                val act = context as Activity
-                                val json = JSONObject(inputStr)
-                                val tableName = json.optString("name").trim()
-                                val coursesArray = json.optJSONArray("courses")
-
-                                if (tableName.isEmpty()) {
-                                    act.runOnUiThread {
-                                        WaitDialog.dismiss()
-                                        TipDialog.show("课表名称不能为空")
-                                    }
-                                    return@launch
-                                }
-    
-                                if (coursesArray == null || coursesArray.length() == 0) {
-                                    act.runOnUiThread {
-                                        WaitDialog.dismiss()
-                                        TipDialog.show("课程列表不能为空")
-                                    }
-                                    return@launch
+                                val json = try {
+                                    JSONObject(content)
+                                } catch (e: Exception) {
+                                    // 兼容纯数组格式
+                                    JSONObject().put("courses", JSONArray(content))
                                 }
 
-                                    val courses = mutableListOf<Course>()
-                                    for (i in 0 until coursesArray.length()) {
-                                        val courseJson = coursesArray.getJSONObject(i)
-                                        val c = Course()
-                                        c.name = courseJson.optString("name", "").trim()
-                                        c.teacher = courseJson.optString("teacher", "").trim()
-                                        c.position = courseJson.optString("location", "").trim()
-                                        c.day = courseJson.optInt("weekday", 1)
-                                        val start = courseJson.optInt("startSection", 1)
-                                        val end = courseJson.optInt("endSection", 2)
+                                val courseArray = json.optJSONArray("courses") ?: JSONArray()
+                                val courses = mutableListOf<Course>()
+                                for (i in 0 until courseArray.length()) {
+                                    val obj = courseArray.getJSONObject(i)
+                                    val c = Course()
+                                    c.name = obj.optString("name")
+                                    c.teacher = obj.optString("teacher")
+                                    c.position = obj.optString("position")
+                                    c.day = obj.optInt("day")
+                                    c.sections = obj.optString("sections")
+                                    c.weeks = obj.optString("weeks")
+                                    
+                                    // 兼容旧版星链字段
+                                    if (c.sections.isBlank()) {
+                                        val start = obj.optInt("startSection", 1)
+                                        val end = obj.optInt("endSection", 2)
                                         c.sections = (start..end).joinToString(",")
-                                        val weeksArray = courseJson.optJSONArray("weeks")
-                                        c.weeks = if (weeksArray != null) {
-                                            buildString {
-                                                for (j in 0 until weeksArray.length()) {
-                                                    append(weeksArray.getInt(j))
-                                                    if (j != weeksArray.length() - 1) append(",")
-                                                }
-                                            }
-                                        } else ""
-                                        val colorIndex = if (c.name.isNotEmpty()) {
-                                            kotlin.math.abs(c.name.hashCode() % COLOR_PRESETS.size)
-                                        } else {
-                                            i % COLOR_PRESETS.size
+                                    }
+                                    if (c.weeks.isBlank()) {
+                                        val wArr = obj.optJSONArray("weeks")
+                                        if (wArr != null) {
+                                            val wList = mutableListOf<Int>()
+                                            for (j in 0 until wArr.length()) wList.add(wArr.getInt(j))
+                                            c.weeks = wList.joinToString(",")
                                         }
-                                        c.style = COLOR_PRESETS[colorIndex]
-                                        courses.add(c)
                                     }
                                     
-                                    act.runOnUiThread {
-                                        WaitDialog.show("正在导入...")
+                                    c.sanitizeAndValidate()
+                                    val colorIndex = if (c.name.isNotEmpty()) {
+                                        abs(c.name.hashCode() % COLOR_PRESETS.size)
+                                    } else {
+                                        i % COLOR_PRESETS.size
                                     }
-    
-                                    val appId = HostCompat.getAppId()
-                                    CourseRepository.importCourses(context, appId, tableName, courses)
+                                    c.style = COLOR_PRESETS[colorIndex]
+                                    courses.add(c)
+                                }
 
-                                    act.runOnUiThread {
-                                        WaitDialog.dismiss()
-                                        TipDialog.show("导入成功")
+                                val schedule = json.optJSONObject("schedule")?.let { sObj ->
+                                    ScheduleConfig().apply {
+                                        if (sObj.has("morningNum")) morningNum = sObj.getInt("morningNum")
+                                        if (sObj.has("afternoonNum")) afternoonNum = sObj.getInt("afternoonNum")
+                                        if (sObj.has("nightNum")) nightNum = sObj.getInt("nightNum")
+                                        if (sObj.has("sections")) sections = sObj.optString("sections")
                                     }
+                                }
+
+                                WaitDialog.show("正在导入...")
+                                val appId = HostCompat.getAppId()
+                                val name = json.optString("name", "Json导入").ifBlank { "Json导入" }
+                                CourseRepository.importCourses(context, appId, name, courses, schedule)
+                                WaitDialog.dismiss()
+                                TipDialog.show("导入成功")
                             } catch (e: Exception) {
                                 e.printStackTrace()
-                                val act = context as Activity
-                                act.runOnUiThread {
-                                    WaitDialog.dismiss()
-                                    TipDialog.show("失败: ${e.message}", WaitDialog.TYPE.ERROR)
-                                }
+                                WaitDialog.dismiss()
+                                TipDialog.show("失败: ${e.message}", WaitDialog.TYPE.ERROR)
                             }
                         }
                         false
@@ -175,7 +161,6 @@ fun importCourseFormJw(context: Context) {
             false
         }
 }
-
 
 private fun handleShiguangImport(context: Context, responseBody: String) {
     val activity = context as Activity
