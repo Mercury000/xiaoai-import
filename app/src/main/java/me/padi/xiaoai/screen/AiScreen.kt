@@ -112,21 +112,21 @@ class AiScreen : BaseActivity() {
                                 Spacer(Modifier.height(8.dp))
 
                                 TextField(
+                                    value = apiUrl, onValueChange = { newValue: String ->
+                                        apiUrl = newValue
+                                        context.writablePrefs().edit().putString("api_url", newValue).apply()
+                                    }, label = "Api地址"
+                                )
+
+                                Spacer(Modifier.height(8.dp))
+
+                                TextField(
                                     value = jwUrl,
                                     onValueChange = { newValue: String ->
                                         jwUrl = newValue
                                         context.writablePrefs().edit().putString("jw_webview_url", newValue).apply()
                                     },
                                     label = "教务系统链接"
-                                )
-
-                                Spacer(Modifier.height(8.dp))
-
-                                TextField(
-                                    value = apiUrl, onValueChange = { newValue: String ->
-                                        apiUrl = newValue
-                                        context.writablePrefs().edit().putString("api_url", newValue).apply()
-                                    }, label = "Api地址"
                                 )
 
                                 Spacer(Modifier.height(8.dp))

@@ -6,27 +6,28 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kongzue.dialogx.dialogs.BottomMenu
 import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
 import me.padi.xiaoai.OkHttpClientManager
 import me.padi.xiaoai.get
 import me.padi.xiaoai.parseYamlList
 import me.padi.xiaoai.launchImportActivity
-import me.padi.xiaoai.click.importCourseFormJw
-import me.padi.xiaoai.click.openContributorQQ
-import me.padi.xiaoai.click.queryScoreFormSchool
-import me.padi.xiaoai.hook.HookEntry
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -50,6 +51,11 @@ data class JwItem(
 class JwSystemScreen : BaseActivity() {
     private val allItems = mutableStateListOf<JwItem>()
     private var isLoading by mutableStateOf(false)
+    // 适配器选择面板状态
+    private var showAdaptersSheet by mutableStateOf(false)
+    private val sheetAdapters = mutableStateListOf<Map<String, String>>()
+    private var sheetFolder by mutableStateOf("")
+    private var sheetCategory by mutableStateOf("")
 
     companion object {
         private const val PREF_NAME    = "jw_cache"
@@ -196,7 +202,6 @@ class JwSystemScreen : BaseActivity() {
     private fun JwSystemContent(paddingValues: PaddingValues) {
         val context = LocalContext.current
         var searchQuery by remember { mutableStateOf("") }
-        // derivedStateOf 追踪快照读，避免 SnapshotStateList.equals(self)==true 导致 remember 不重算
         val filteredItems by remember(searchQuery) {
             derivedStateOf {
                 if (searchQuery.isBlank()) allItems
@@ -204,45 +209,128 @@ class JwSystemScreen : BaseActivity() {
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp)
-        ) {
-            // 搜索框 + 刷新按钮同排
-            Row(
+        // 用 Box 叠加：底层是列表，顶层是不新建窗口的遮罩+面板
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 16.dp)
             ) {
-                TextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    label = "搜索学校或系统...",
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = { (context as JwSystemScreen).fetchData(forceRefresh = true) },
-                    enabled = !isLoading
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(if (isLoading) "加载中" else "刷新")
+                    TextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = "搜索学校或系统...",
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { (context as JwSystemScreen).fetchData(forceRefresh = true) },
+                        enabled = !isLoading
+                    ) {
+                        Text(if (isLoading) "加载中" else "刷新")
+                    }
+                }
+
+                if (isLoading && allItems.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    if (isLoading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
+                    }
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(filteredItems) { item ->
+                            JwItemRow(item)
+                        }
+                    }
                 }
             }
 
-            if (isLoading && allItems.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                if (isLoading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
-                }
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(filteredItems) { item ->
-                        JwItemRow(item)
+            // 遮罩层（先放，z 顺序低于面板）：点击关闭面板
+            if (showAdaptersSheet) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .clickable { showAdaptersSheet = false }
+                )
+            }
+
+            // 适配器面板：完全在当前 Compose 树内叠加，不新建任何 Window/Dialog，状态栏不受影响
+            AnimatedVisibility(
+                visible = showAdaptersSheet,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically { it },
+                exit = slideOutVertically { it }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MiuixTheme.colorScheme.surface,
+                            RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                        )
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    // 顶部 handle 条
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 8.dp, bottom = 4.dp)
+                            .size(width = 40.dp, height = 4.dp)
+                            .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.2f), RoundedCornerShape(2.dp))
+                    )
+                    Text(
+                        text = sheetCategory,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp)
+                            .padding(bottom = 8.dp)
+                    ) {
+                        items(sheetAdapters) { adapter ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable {
+                                        showAdaptersSheet = false
+                                        launchShiguangAdapter(context, sheetFolder, adapter)
+                                    }
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                    Text(adapter["adapter_name"] ?: "Unknown", fontSize = 16.sp)
+                                    val maintainer = adapter["maintainer"]
+                                    if (!maintainer.isNullOrBlank()) {
+                                        Text(
+                                            text = "贡献者：$maintainer",
+                                            fontSize = 12.sp,
+                                            color = MiuixTheme.colorScheme.primary
+                                        )
+                                    }
+                                    val desc = adapter["description"]
+                                    if (!desc.isNullOrBlank()) {
+                                        Text(
+                                            text = desc.replace("\\n", "\n"),
+                                            fontSize = 11.sp,
+                                            color = MiuixTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -328,18 +416,11 @@ class JwSystemScreen : BaseActivity() {
             }
 
             (context as Activity).runOnUiThread {
-                val subNames = adapters.map {
-                    val name = it["adapter_name"] ?: "Unknown"
-                    val maintainer = it["maintainer"]
-                    if (!maintainer.isNullOrBlank()) "$name  (贡献者：$maintainer)" else name
-                }.toTypedArray()
-                BottomMenu.show(subNames).setTitle(categoryName).setMessage("请选择具体学校/功能")
-                    .setSingleSelection()
-                    .setOnMenuItemClickListener { _, _, subIndex ->
-                        val a = adapters[subIndex]
-                        launchShiguangAdapter(context, folder, a)
-                        false
-                    }
+                sheetAdapters.clear()
+                sheetAdapters.addAll(adapters)
+                sheetFolder = folder
+                sheetCategory = categoryName
+                showAdaptersSheet = true
             }
         }, onError = { e ->
             WaitDialog.dismiss()

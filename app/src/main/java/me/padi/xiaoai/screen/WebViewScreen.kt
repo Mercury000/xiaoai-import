@@ -3,6 +3,7 @@ package me.padi.xiaoai.screen
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.view.MotionEvent
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -86,7 +87,6 @@ private data class SelectionPendingState(val data: SingleSelectionDialogData, va
 class WebViewScreen : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             MiuixTheme {
                 WebViewScreenContent(intent)
@@ -325,6 +325,16 @@ private fun WebViewScreenContent(intent: Intent) {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
                                 databaseEnabled = true
+                            }
+                            // 阻止外层 LazyColumn 拦截触摸事件，让 WebView 能正常滚动
+                            webView.setOnTouchListener { v, event ->
+                                when (event.action) {
+                                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                                }
+                                false
                             }
                             val bridge = AndroidBridge(context, webView, bridgeCallback)
                             webView.addJavascriptInterface(bridge, "AndroidBridge")
