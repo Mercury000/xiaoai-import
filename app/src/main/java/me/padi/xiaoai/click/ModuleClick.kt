@@ -124,13 +124,24 @@ fun importCourseFormJw(context: Context) {
                                     courses.add(c)
                                 }
 
-                                val tables = ApiClient.fetchTables(appId, serviceToken, deviceId)
+                                val loader = context.classLoader
+                                fun <T> runWithRetry(block: (String) -> T): T {
+                                    val token = HostCompat.getAccessToken(context, loader) ?: ""
+                                    return try {
+                                        block(token)
+                                    } catch (e: ApiClient.UnauthorizedException) {
+                                        val newToken = HostCompat.getAccessToken(context, loader, true) ?: ""
+                                        block(newToken)
+                                    }
+                                }
+
+                                val tables = runWithRetry { tok -> ApiClient.fetchTables(appId, tok, deviceId) }
                                 val fromCtId = tables.firstOrNull { it.current == 1 }?.id ?: 0L
 
-                                val ctid = ApiClient.createTable(tableName, appId, serviceToken, deviceId)
-                                ApiClient.switchTable(fromCtId, ctid, appId, serviceToken, deviceId)
+                                val ctid = runWithRetry { tok -> ApiClient.createTable(tableName, appId, tok, deviceId) }
+                                runWithRetry { tok -> ApiClient.switchTable(fromCtId, ctid, appId, tok, deviceId) }
 
-                                ApiClient.uploadCoursesAll(courses, ctid, appId, serviceToken, deviceId)
+                                runWithRetry { tok -> ApiClient.uploadCoursesAll(courses, ctid, appId, tok, deviceId) }
 
                                 act.runOnUiThread {
                                     WaitDialog.dismiss()

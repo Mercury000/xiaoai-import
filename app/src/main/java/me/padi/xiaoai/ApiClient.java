@@ -313,6 +313,7 @@ public class ApiClient {
                 .put("sourceName", SOURCE_NAME);
 
         String requestId = UUID.randomUUID().toString().replace("-", "").toUpperCase();
+        android.util.Log.i("XiaoAiKeBiao", "ApiClient.uploadCoursesAll: token=" + tokenMask(serviceToken) + " ctId=" + ctId + " courses=" + courses.size());
         Request req = new Request.Builder()
                 .url(BASE_URL + "/course-multi-auth/courseInfos")
                 .header("Authorization", buildAuth(appId, serviceToken, deviceId))
@@ -332,6 +333,7 @@ public class ApiClient {
 
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
+            android.util.Log.i("XiaoAiKeBiao", "ApiClient.uploadCoursesAll: HTTP " + resp.code() + " body=" + raw.substring(0, Math.min(200, raw.length())));
             if (resp.code() == 401) throw new UnauthorizedException("Token expired");
             if (!resp.isSuccessful()) throw new Exception(resp.code() + ": " + raw);
             JSONObject json = new JSONObject(raw);
@@ -348,20 +350,35 @@ public class ApiClient {
         }
     }
 
+    private static String tokenMask(String token) {
+        if (token == null || token.isEmpty()) return "<blank>";
+        return token.length() > 12 ? token.substring(0, 10) + "..." + token.substring(token.length() - 4) : "<short=" + token.length() + ">";
+    }
+
     private static String buildAuth(String appId, String serviceToken, String deviceId) {
-        if (serviceToken != null && (serviceToken.startsWith("DO-TOKEN") || serviceToken.startsWith("AO-TOKEN"))) {
+        // 如果是宏主已经构建好的完整 Authorization header，直接透传
+        if (serviceToken != null && (
+                serviceToken.startsWith("DO-TOKEN") ||
+                serviceToken.startsWith("AO-TOKEN") ||
+                serviceToken.startsWith("Bearer ") ||
+                serviceToken.contains("app_id:") ||
+                serviceToken.contains("access_token:"))) {
+            android.util.Log.i("XiaoAiKeBiao", "buildAuth: passthrough complete auth header, prefix=" + (serviceToken.length() > 20 ? serviceToken.substring(0, 20) : serviceToken));
             return serviceToken;
         }
         try {
             String scopeJson = "{\"d\":\"" + deviceId + "\"}";
             String scopeData = Base64.encodeToString(scopeJson.getBytes("UTF-8"), Base64.NO_WRAP);
-            return "DO-TOKEN-V1 app_id:" + appId + ",scope_data:" + scopeData + ",access_token:" + serviceToken;
+            String auth = "DO-TOKEN-V1 app_id:" + appId + ",scope_data:" + scopeData + ",access_token:" + serviceToken;
+            android.util.Log.i("XiaoAiKeBiao", "buildAuth: constructed header=" + (auth.length() > 60 ? auth.substring(0, 60) + "..." : auth));
+            return auth;
         } catch (Exception e) {
             return "";
         }
     }
 
     public static List<CourseTable> fetchTables(String appId, String serviceToken, String deviceId) throws Exception {
+        android.util.Log.i("XiaoAiKeBiao", "ApiClient.fetchTables: token=" + tokenMask(serviceToken));
         String url = BASE_URL + "/course-multi-auth/tables?requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + SOURCE_NAME;
         Request req = new Request.Builder()
                 .url(url)
@@ -374,6 +391,7 @@ public class ApiClient {
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
+            android.util.Log.i("XiaoAiKeBiao", "ApiClient.fetchTables: HTTP " + resp.code() + " body=" + raw.substring(0, Math.min(200, raw.length())));
             if (!resp.isSuccessful()) {
                 if (resp.code() == 401) throw new UnauthorizedException("Token expired");
                 if (resp.code() == 500) {
@@ -452,6 +470,7 @@ public class ApiClient {
     }
 
     public static long createTable(String name, String appId, String serviceToken, String deviceId) throws Exception {
+        android.util.Log.i("XiaoAiKeBiao", "ApiClient.createTable: name=" + name + " token=" + tokenMask(serviceToken));
         JSONObject body = new JSONObject().put("name", name).put("current", 0).put("sourceName", SOURCE_NAME);
         Request req = new Request.Builder()
                 .url(BASE_URL + "/course-multi-auth/table")
@@ -468,6 +487,7 @@ public class ApiClient {
                 .build();
         try (Response resp = CLIENT.newCall(req).execute()) {
             String raw = resp.body() != null ? resp.body().string() : "";
+            android.util.Log.i("XiaoAiKeBiao", "ApiClient.createTable: HTTP " + resp.code() + " body=" + raw.substring(0, Math.min(200, raw.length())));
             if (!resp.isSuccessful()) {
                 if (resp.code() == 401) throw new UnauthorizedException("Token expired");
                 throw new Exception("新建课表请求失败(HTTP " + resp.code() + ")");
@@ -555,6 +575,7 @@ public class ApiClient {
     }
 
     public static void switchTable(long fromCtId, long toCtId, String appId, String serviceToken, String deviceId) throws Exception {
+        android.util.Log.i("XiaoAiKeBiao", "ApiClient.switchTable: from=" + fromCtId + " to=" + toCtId + " token=" + tokenMask(serviceToken));
         JSONObject body = new JSONObject()
                 .put("fromCtId", fromCtId)
                 .put("toCtId", toCtId)

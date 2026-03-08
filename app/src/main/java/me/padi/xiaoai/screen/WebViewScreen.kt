@@ -189,10 +189,13 @@ private fun WebViewScreenContent(intent: Intent) {
                         }
 
                         val appId = HostCompat.getAppId()
-                        val serviceToken = HostCompat.getAccessToken(context)
-                        val deviceId = HostCompat.getDeviceId(context)
+                        val loader = HostCompat.hostLoader ?: context.classLoader
+                        val serviceToken = HostCompat.getAccessToken(context, loader)
+                        val deviceId = HostCompat.getDeviceId(context, loader)
+                        val devIdMasked = if (!deviceId.isNullOrBlank()) deviceId.take(8) + "..." else "<blank>"
+                        android.util.Log.i("XiaoAiKeBiao", "WebViewScreen(onSave) earlyCheck: deviceId=$devIdMasked")
                         
-                        if (serviceToken == null || deviceId == null) {
+                        if (serviceToken.isNullOrBlank() || deviceId.isNullOrBlank()) {
                              withContext(Dispatchers.Main) {
                                  importState = ImportState.Error("无法获取令牌")
                                  callback(false, "无法获取令牌")
@@ -200,13 +203,20 @@ private fun WebViewScreenContent(intent: Intent) {
                              return@launch
                         }
 
-                        val loader = context.classLoader
+                        android.util.Log.i("XiaoAiKeBiao", "WebViewScreen(onSave): hostLoader=${HostCompat.hostLoader != null}, effectiveLoader=$loader")
                         suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
-                            val token = HostCompat.getAccessToken(context, loader) ?: ""
+                            val token = withContext(Dispatchers.IO) {
+                                HostCompat.getAccessToken(context, loader)
+                            } ?: ""
+                            android.util.Log.i("XiaoAiKeBiao", "WebViewScreen runWithRetry: token=${if (token.length > 12) token.take(10)+"..."+token.takeLast(4) else "<short=${"${token.length}"}>"}")
                             return try {
                                 block(token)
                             } catch (e: ApiClient.UnauthorizedException) {
-                                val newToken = HostCompat.getAccessToken(context, loader) ?: ""
+                                android.util.Log.w("XiaoAiKeBiao", "WebViewScreen runWithRetry: 401, retrying forceRefresh=true")
+                                val newToken = withContext(Dispatchers.IO) {
+                                    HostCompat.getAccessToken(context, loader, forceRefresh = true)
+                                } ?: ""
+                                android.util.Log.i("XiaoAiKeBiao", "WebViewScreen runWithRetry: newToken=${if (newToken.length > 12) newToken.take(10)+"..."+newToken.takeLast(4) else "<short>"}")
                                 block(newToken)
                             }
                         }
@@ -428,13 +438,21 @@ private fun WebViewScreenContent(intent: Intent) {
                                                     coroutineScope.launch {
                                                         try {
                                                             importState = ImportState.Parsing
-                                                            val loader = context.classLoader
+                                                            val loader = HostCompat.hostLoader ?: context.classLoader
+                                                            android.util.Log.i("XiaoAiKeBiao", "WebViewScreen(AI): hostLoader=${HostCompat.hostLoader != null}, effectiveLoader=$loader")
                                                             suspend fun <T> runWithRetry(block: suspend (String) -> T): T {
-                                                                val token = HostCompat.getAccessToken(context, loader) ?: ""
+                                                                val token = withContext(Dispatchers.IO) {
+                                                                    HostCompat.getAccessToken(context, loader)
+                                                                } ?: ""
+                                                                android.util.Log.i("XiaoAiKeBiao", "WebViewScreen(AI) runWithRetry: token=${if (token.length > 12) token.take(10)+"..."+token.takeLast(4) else "<short=${"${token.length}"}>"}")
                                                                 return try {
                                                                     block(token)
                                                                 } catch (e: ApiClient.UnauthorizedException) {
-                                                                    val newToken = HostCompat.getAccessToken(context, loader) ?: ""
+                                                                    android.util.Log.w("XiaoAiKeBiao", "WebViewScreen(AI) runWithRetry: 401, retrying forceRefresh=true")
+                                                                    val newToken = withContext(Dispatchers.IO) {
+                                                                        HostCompat.getAccessToken(context, loader, forceRefresh = true)
+                                                                    } ?: ""
+                                                                    android.util.Log.i("XiaoAiKeBiao", "WebViewScreen(AI) runWithRetry: newToken=${if (newToken.length > 12) newToken.take(10)+"..."+newToken.takeLast(4) else "<short>"}")
                                                                     block(newToken)
                                                                 }
                                                             }
