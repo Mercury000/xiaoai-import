@@ -109,7 +109,8 @@ private fun WebViewScreenContent(intent: Intent) {
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
 
     val coroutineScope = rememberCoroutineScope()
-    val webViewState = rememberWebViewState(url)
+    val initialUrl = remember { url }
+    val webViewState = rememberWebViewState(initialUrl)
 
     // 对话框状态（用显式 MutableState ref 以便在 remember 闭包中捕获）
     val alertStateRef: MutableState<AlertPendingState?> = remember { mutableStateOf(null) }

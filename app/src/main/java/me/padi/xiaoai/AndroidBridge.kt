@@ -102,7 +102,8 @@ class AndroidBridge(
         promiseId: String
     ) {
         handler.post {
-            val data = PromptDialogData(titleText, tipText, defaultText, validatorJsFunction)
+            val validValidator = if (validatorJsFunction == "null") null else validatorJsFunction
+            val data = PromptDialogData(titleText, tipText, defaultText, validValidator)
             // 成功回调：用户确认输入
             val onConfirm: (String?) -> Unit = onConfirm@{ input ->
                 if (input == null) {
@@ -146,7 +147,7 @@ class AndroidBridge(
 
                 if (validationResult.isNullOrEmpty() || validationResult.equals(
                         "false", ignoreCase = true
-                    )
+                    ) || validationResult.equals("null", ignoreCase = true)
                 ) {
                     // 验证成功：解决 Promise
                     val escapedInput = input.replace("'", "\\'")

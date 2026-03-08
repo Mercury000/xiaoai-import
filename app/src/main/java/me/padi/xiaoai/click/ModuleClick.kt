@@ -154,7 +154,7 @@ fun importCourseFormJw(context: Context) {
                     val waitDialog = WaitDialog.show("加载中")
                     val baseUrl = when (text) {
                         "通用教务系统导入" -> "https://gitee.com/padi/aishedule/raw/master/system.json"
-                        "拾光适配仓库" -> "https://gitee.com/padi/shiguang/raw/main/school.json"
+                        "拾光适配仓库" -> "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
                         else -> "https://gitee.com/padi/aishedule/raw/master/school.json"
                     }
 
@@ -183,64 +183,122 @@ fun importCourseFormJw(context: Context) {
         }
 }
 
-private fun handleShiguangImport(context: Context, responseBody: String) {
-    val activity = context as Activity
-    val rootJson = JSONObject(responseBody)
-    val schoolArray = rootJson.getJSONArray("3")
-    val schoolIdList = mutableListOf<String>()
-    val schoolNameList = mutableListOf<String>()
-    val adapterInfoList = mutableListOf<JSONObject>()
-
-    for (i in 0 until schoolArray.length()) {
-        val item = schoolArray.getJSONObject(i)
-        val itemId = item.optString("1", "")
-        val itemName = item.optString("2", "")
-        if (item.has("5-1")) {
-            val adapterObj = item.get("5-1")
-            if (adapterObj is JSONObject) {
-                schoolIdList.add(itemId)
-                schoolNameList.add(itemName)
-                adapterInfoList.add(adapterObj)
-            } else if (adapterObj is JSONArray && adapterObj.length() > 0) {
-                schoolIdList.add(itemId)
-                schoolNameList.add(itemName)
-                adapterInfoList.add(adapterObj.getJSONObject(0))
+private fun parseYamlList(content: String): List<Map<String, String>> {
+    val items = mutableListOf<Map<String, String>>()
+    var currentItem = mutableMapOf<String, String>()
+    
+    val lines = content.lines()
+    for (line in lines) {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+        
+        if (trimmed.startsWith("- ")) {
+            if (currentItem.isNotEmpty()) {
+                items.add(currentItem)
+                currentItem = mutableMapOf()
             }
-        } else if (item.has("5")) {
-            val adapterObj = item.get("5")
-            if (adapterObj is JSONObject) {
-                schoolIdList.add(itemId)
-                schoolNameList.add(itemName)
-                adapterInfoList.add(adapterObj)
-            }
+            // 处理首行
+            val pair = extractYamlPair(trimmed.substring(2))
+            if (pair != null) currentItem[pair.first] = pair.second
+        } else if (trimmed.contains(":")) {
+            val pair = extractYamlPair(trimmed)
+            if (pair != null) currentItem[pair.first] = pair.second
         }
     }
+    if (currentItem.isNotEmpty()) items.add(currentItem)
+    return items
+}
+
+private fun extractYamlPair(line: String): Pair<String, String>? {
+    val colonIndex = line.indexOf(":")
+    if (colonIndex == -1) return null
+    
+    val key = line.substring(0, colonIndex).trim()
+    var valuePart = line.substring(colonIndex + 1).trim()
+    
+    // 去掉行尾注释
+    if (valuePart.contains("#")) {
+        valuePart = valuePart.substring(0, valuePart.indexOf("#")).trim()
+    }
+    
+    // 去掉引号
+    val value = if (valuePart.startsWith("\"") && valuePart.endsWith("\"")) {
+        valuePart.substring(1, valuePart.length - 1)
+    } else if (valuePart.startsWith("'") && valuePart.endsWith("'")) {
+        valuePart.substring(1, valuePart.length - 1)
+    } else {
+        valuePart
+    }
+    
+    return key to value
+}
+
+private fun handleShiguangImport(context: Context, responseBody: String) {
+    val activity = context as Activity
+    
+    // 解析 YAML: 提取 schools 列表
+    val schools = parseYamlList(responseBody).filter { it.containsKey("id") && it.containsKey("name") }
+    if (schools.isEmpty()) {
+        TipDialog.show("未找到有效的学校列表")
+        return
+    }
+
+    val names = schools.map { it["name"] ?: "Unknown" }.toTypedArray()
+    val folders = schools.map { it["resource_folder"] ?: "" }
 
     activity.runOnUiThread {
-        BottomMenu.show(schoolNameList.toTypedArray()).setTitle("提示")
-            .setMessage("选择你的学校进行导入")
+        BottomMenu.show(names).setTitle("拾光适配仓库").setMessage("请选择分类/学校")
             .setSingleSelection()
-            .setOnMenuItemClickListener { dialog, text, index ->
-                val schoolId = schoolIdList[index]
-                val adapterObj = adapterInfoList[index]
-                val adapterName = adapterObj.optString("2", "课程表导入")
-                val fileName = adapterObj.optString("4", "")
-                var schoolUrl = adapterObj.optString("5", "")
-                val description = adapterObj.optString("6", "请先登录教务系统后再点击导入")
-                val scriptUrl = "https://gitee.com/padi/shiguang/raw/main/resources/$schoolId/$fileName"
-
-                WaitDialog.show("加载脚本...")
-                OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
+            .setOnMenuItemClickListener { firstDialog, name, index ->
+                val folder = folders[index]
+                val adaptersUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/adapters.yaml"
+                
+                WaitDialog.show("加载适配器列表...")
+                OkHttpClientManager.get(adaptersUrl, onSuccess = { resp ->
                     WaitDialog.dismiss()
-                    val jsStr = resp.body.string()
-                    launchImportActivity(context, schoolUrl, adapterName, description, jsStr)
+                    val yamlContent = resp.body.string()
+                    val adapters = parseYamlList(yamlContent).filter { it.containsKey("adapter_id") && it.containsKey("adapter_name") }
+                    
+                    if (adapters.isEmpty()) {
+                        TipDialog.show("未找到有效的适配脚本")
+                        return@get
+                    }
+
+                    activity.runOnUiThread {
+                        if (adapters.size == 1) {
+                            val a = adapters[0]
+                            launchOfficialAdapter(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
+                        } else {
+                            val subNames = adapters.map { it["adapter_name"] ?: "Unknown" }.toTypedArray()
+                            BottomMenu.show(subNames).setTitle(name).setMessage("请选择具体功能")
+                                .setSingleSelection()
+                                .setOnMenuItemClickListener { secondDialog, subName, subIndex ->
+                                    val a = adapters[subIndex]
+                                    launchOfficialAdapter(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
+                                    false
+                                }
+                        }
+                    }
                 }, onError = { e ->
                     WaitDialog.dismiss()
-                    TipDialog.show("下载失败: ${e.message}")
+                    TipDialog.show("列表下载失败: ${e.message}")
                 })
                 false
             }
     }
+}
+
+private fun launchOfficialAdapter(context: Context, folder: String, name: String, jsPath: String, url: String, desc: String) {
+    val scriptUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/$jsPath"
+    WaitDialog.show("加载脚本...")
+    OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
+        WaitDialog.dismiss()
+        val jsStr = resp.body.string()
+        launchImportActivity(context, url, name, desc.replace("\\n", "\n"), jsStr)
+    }, onError = { e ->
+        WaitDialog.dismiss()
+        TipDialog.show("脚本下载失败: ${e.message}")
+    })
 }
 
 private fun handleCommonImport(context: Context, type: String, responseBody: String) {

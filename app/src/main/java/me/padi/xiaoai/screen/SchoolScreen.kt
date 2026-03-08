@@ -2,12 +2,16 @@ package me.padi.xiaoai.screen
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.webkit.CookieManager
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
+import android.webkit.WebView as NativeWebView
+import com.kongzue.dialogx.dialogs.BottomMenu
+import com.kongzue.dialogx.dialogs.TipDialog
+import com.kongzue.dialogx.dialogs.WaitDialog
+import me.padi.xiaoai.OkHttpClientManager
+import me.padi.xiaoai.get
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -26,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,29 +91,96 @@ enum class SchoolImportType {
 }
 
 class SchoolScreen : BaseActivity() {
+    private val schoolList = mutableStateListOf<SchoolData>()
+    private var isRefreshing by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val jsonString = readRawFile(R.raw.school) ?: ""
-        val schoolsArray = JSONArray(jsonString)
-        val schoolList = mutableListOf<SchoolData>()
-
-        for (i in 0 until schoolsArray.length()) {
-            val school = schoolsArray.getJSONObject(i)
-            schoolList.add(SchoolData(
-                school.getString("name"),
-                school.getString("type"),
-                school.getString("url"),
-                school.getString("importType"),
-                school.getString("sortKey")
-            ))
-        }
+        loadSchoolList()
 
         setContent {
             MiuixTheme {
-                SchoolListScreenContent(schoolList)
+                SchoolListScreenContent(schoolList, isRefreshing) { loadSchoolList() }
             }
+        }
+    }
+
+    private fun loadSchoolList() {
+        // 初始加载本地作为兜底
+        val localJson = readRawFile(R.raw.school) ?: ""
+        parseAndPopulateList(localJson)
+        
+        // 尝试从拾光官方仓库拉取最新 root_index.yaml
+        isRefreshing = true
+        val remoteUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
+        OkHttpClientManager.get(remoteUrl, onSuccess = { response ->
+            try {
+                val remoteContent = response.body.string()
+                if (remoteContent.isNotBlank()) {
+                    parseAndPopulateList(remoteContent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isRefreshing = false
+            }
+        }, onError = { _ ->
+            isRefreshing = false
+        })
+    }
+
+    private fun parseAndPopulateList(content: String) {
+        try {
+            val newList = mutableListOf<SchoolData>()
+            if (content.contains("schools:") || content.contains("- id:")) {
+                // 官方 YAML 规范
+                val schools = parseYamlList(content).filter { it.containsKey("id") && it.containsKey("name") }
+                for (school in schools) {
+                    newList.add(SchoolData(
+                        name = school["name"] ?: "Unknown",
+                        type = "拾光适配",
+                        url = school["resource_folder"] ?: "",
+                        importType = "shiguang_official",
+                        sortKey = school["initial"] ?: "#"
+                    ))
+                }
+            } else {
+                // 传统 JSON 规范
+                val schoolsArray = if (content.startsWith("{")) {
+                    JSONObject(content).optJSONArray("3") ?: return
+                } else {
+                    JSONArray(content)
+                }
+                for (i in 0 until schoolsArray.length()) {
+                    val school = schoolsArray.getJSONObject(i)
+                    if (school.has("2")) { // 数字键格式
+                        newList.add(SchoolData(
+                            school.optString("2", "Unknown"),
+                            "拾光适配",
+                            school.optString("1", ""),
+                            "shiguang",
+                            school.optString("3", "#")
+                        ))
+                    } else { // 标准键格式
+                        newList.add(SchoolData(
+                            school.optString("name", "Unknown"),
+                            school.optString("type", ""),
+                            school.optString("url", ""),
+                            school.optString("importType", "wakeup"),
+                            school.optString("sortKey", "#")
+                        ))
+                    }
+                }
+            }
+
+            if (newList.isNotEmpty()) {
+                schoolList.clear()
+                schoolList.addAll(newList.sortedBy { it.name })
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -121,9 +193,77 @@ class SchoolScreen : BaseActivity() {
     }
 }
 
+private fun parseYamlList(content: String): List<Map<String, String>> {
+    val items = mutableListOf<Map<String, String>>()
+    var currentItem = mutableMapOf<String, String>()
+    val lines = content.lines()
+    for (line in lines) {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+        if (trimmed.startsWith("- ")) {
+            if (currentItem.isNotEmpty()) {
+                items.add(currentItem)
+                currentItem = mutableMapOf()
+            }
+            val pair = extractYamlPair(trimmed.substring(2))
+            if (pair != null) currentItem[pair.first] = pair.second
+        } else if (trimmed.contains(":")) {
+            val pair = extractYamlPair(trimmed)
+            if (pair != null) currentItem[pair.first] = pair.second
+        }
+    }
+    if (currentItem.isNotEmpty()) items.add(currentItem)
+    return items
+}
+
+private fun extractYamlPair(line: String): Pair<String, String>? {
+    val colonIndex = line.indexOf(":")
+    if (colonIndex == -1) return null
+    val key = line.substring(0, colonIndex).trim()
+    var valuePart = line.substring(colonIndex + 1).trim()
+    if (valuePart.contains("#")) {
+        valuePart = valuePart.substring(0, valuePart.indexOf("#")).trim()
+    }
+    val value = if (valuePart.startsWith("\"") && valuePart.endsWith("\"")) {
+        valuePart.substring(1, valuePart.length - 1)
+    } else if (valuePart.startsWith("'") && valuePart.endsWith("'")) {
+        valuePart.substring(1, valuePart.length - 1)
+    } else {
+        valuePart
+    }
+    return key to value
+}
+
+private fun startOfficialJsImport(context: Context, folder: String, name: String, jsPath: String, url: String, desc: String) {
+    val scriptUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/$jsPath"
+    WaitDialog.show("加载脚本...")
+    OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
+        WaitDialog.dismiss()
+        val jsStr = resp.body.string()
+        launchImportActivity(context, url, name, desc.replace("\\n", "\n"), jsStr)
+    }, onError = { e ->
+        WaitDialog.dismiss()
+        TipDialog.show("脚本下载失败: ${e.message}")
+    })
+}
+
+private fun launchImportActivity(context: Context, url: String, title: String, text: String, script: String) {
+    val intent = Intent(context, WebViewScreen::class.java).apply {
+        putExtra("url", url)
+        putExtra("title", title)
+        putExtra("script", "(async function () {${script}})();")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(intent)
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
+private fun SchoolListScreenContent(
+    schoolList: List<SchoolData>,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit
+) {
     var searchText by remember { mutableStateOf("") }
     val filteredSchoolList = remember(searchText, schoolList) {
         if (searchText.isBlank()) schoolList
@@ -140,7 +280,7 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
     var tableName by remember { mutableStateOf("") }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
     var webViewLoading by remember { mutableStateOf(false) }
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var webViewRef by remember { mutableStateOf<NativeWebView?>(null) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -148,9 +288,23 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
     val webViewState = rememberWebViewState(url)
 
     Scaffold(
-        topBar = { SmallTopAppBar(title = "选择学校") }
+        topBar = { 
+            SmallTopAppBar(
+                title = "选择学校",
+                actions = {
+                    TextButton(
+                        text = if (isRefreshing) "加载中..." else "刷新列表",
+                        onClick = onRefresh,
+                        enabled = !isRefreshing
+                    )
+                }
+            ) 
+        }
     ) { paddingValues ->
         Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp)) {
+            if (isRefreshing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
+            }
             TextField(
                 value = searchText,
                 onValueChange = { searchText = it },
@@ -164,10 +318,45 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                     items(schools) { school ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
-                                selectedSchool = school
-                                url = school.url
-                                webViewState.content = WebContent.Url(school.url)
-                                showBottomSheet = true
+                                if (school.importType == "shiguang_official") {
+                                    val folder = school.url // 我们之前把 resource_folder 存到了 url
+                                    val adaptersUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/adapters.yaml"
+                                    
+                                        WaitDialog.show("加载适配器...")
+                                        OkHttpClientManager.get(adaptersUrl, { resp ->
+                                            WaitDialog.dismiss()
+                                            val yamlContent = resp.body.string()
+                                            val adapters: List<Map<String, String>> = parseYamlList(yamlContent).filter { it.containsKey("adapter_id") && it.containsKey("adapter_name") }
+                                        
+                                        if (adapters.isEmpty()) {
+                                            TipDialog.show("暂无适配脚本")
+                                            return@get
+                                        }
+
+                                        (context as SchoolScreen).runOnUiThread {
+                                            if (adapters.size == 1) {
+                                                val a = adapters[0]
+                                                startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
+                                            } else {
+                                                val subNames: Array<String> = adapters.map { it["adapter_name"] ?: "Unknown" }.toTypedArray()
+                                                BottomMenu.show(subNames).setTitle(school.name).setMessage("选择导入方式")
+                                                    .setOnMenuItemClickListener { _, _, subIndex ->
+                                                        val a = adapters[subIndex]
+                                                        startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", a["description"] ?: "")
+                                                        false
+                                                    }
+                                            }
+                                        }
+                                    }, onError = { e ->
+                                        WaitDialog.dismiss()
+                                        TipDialog.show("列表下载失败: ${e.message}")
+                                    })
+                                } else {
+                                    selectedSchool = school
+                                    url = school.url
+                                    webViewState.content = WebContent.Url(school.url)
+                                    showBottomSheet = true
+                                }
                             }
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
@@ -194,10 +383,10 @@ private fun SchoolListScreenContent(schoolList: List<SchoolData>) {
                             navigator = navigator,
                             client = remember {
                                 object : AccompanistWebViewClient() {
-                                    override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                                    override fun onPageStarted(view: NativeWebView, url: String?, favicon: Bitmap?) {
                                         webViewLoading = true
                                     }
-                                    override fun onPageFinished(view: WebView, url: String?) {
+                                    override fun onPageFinished(view: NativeWebView, url: String?) {
                                         webViewLoading = false
                                         CookieManager.getInstance().flush()
                                     }
