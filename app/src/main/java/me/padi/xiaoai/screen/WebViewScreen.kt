@@ -3,14 +3,17 @@ package me.padi.xiaoai.screen
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -38,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kevinnzou.web.AccompanistWebChromeClient
 import com.kevinnzou.web.AccompanistWebViewClient
 import com.kevinnzou.web.WebContent
 import com.kevinnzou.web.WebView
@@ -71,18 +76,50 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
+import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class AlertPendingState(val data: AlertDialogData, val callback: (Boolean) -> Unit)
-private data class PromptPendingState(val data: PromptDialogData, val callback: (String?) -> Unit, val errorCallback: (String) -> Unit)
-private data class SelectionPendingState(val data: SingleSelectionDialogData, val callback: (Int?) -> Unit)
+import java.util.concurrent.CountDownLatch
+
+/** 每次页面加载后注入的桥接胶水脚本，保证页面跳转后 AndroidBridgePromise 始终可用 */
+private val BRIDGE_GLUE_JS = """
+(function(){
+  try {
+    console.log('Bridge Glue: Starting injection...');
+    if(window.AndroidBridgePromise){
+       console.log('Bridge Glue: Already exists, skipping.');
+       return;
+    }
+    window.AndroidBridgePromise={
+      showAlert:function(t,c,b){ console.log('Bridge: showAlert called'); return AndroidBridge.showAlert(t,c,b); },
+      showPrompt:function(t,p,d,v){ console.log('Bridge: showPrompt called'); return AndroidBridge.showPrompt(t,p,d||'',v||''); },
+      showSingleSelection:function(t,i,d){ console.log('Bridge: showSingleSelection called'); return AndroidBridge.showSingleSelection(t,i,d!=null?d:-1); },
+      saveImportedCourses:function(j){ return AndroidBridge.saveImportedCourses(j, ''); },
+      saveCourseConfig:function(j){ return AndroidBridge.saveCourseConfig(j, ''); },
+      savePresetTimeSlots:function(j){ return AndroidBridge.savePresetTimeSlots(j, ''); },
+      notifyTaskCompletion:function(){ AndroidBridge.notifyTaskCompletion(); }
+    };
+    // 兼容性挂载
+    window.app = window.app || {};
+    window.app.showAlert = window.AndroidBridgePromise.showAlert;
+    window.app.showPrompt = window.AndroidBridgePromise.showPrompt;
+    
+    console.log('Bridge Glue: Injected successfully (Sync Mode).');
+  } catch(e) { console.error('Bridge Glue: Error during injection', e); }
+})();
+""".trimIndent()
+
+private data class AlertPendingState(val data: AlertDialogData, val latch: CountDownLatch, val result: BooleanArray)
+private data class PromptPendingState(val data: PromptDialogData, val latch: CountDownLatch, val result: Array<String?>)
+private data class SelectionPendingState(val data: SingleSelectionDialogData, val latch: CountDownLatch, val result: IntArray)
 
 class WebViewScreen : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,15 +162,15 @@ private fun WebViewScreenContent(intent: Intent) {
 
     val bridgeCallback = remember {
         object : BridgeCallback {
-            override fun onShowAlert(data: AlertDialogData, callback: (Boolean) -> Unit) {
-                alertStateRef.value = AlertPendingState(data, callback)
+            override fun onShowAlert(data: AlertDialogData, latch: CountDownLatch, result: BooleanArray) {
+                alertStateRef.value = AlertPendingState(data, latch, result)
             }
-            override fun onShowPrompt(data: PromptDialogData, callback: (String?) -> Unit, errorCallback: (String) -> Unit) {
+            override fun onShowPrompt(data: PromptDialogData, latch: CountDownLatch, result: Array<String?>) {
                 promptInputRef.value = data.defaultText
-                promptStateRef.value = PromptPendingState(data, callback, errorCallback)
+                promptStateRef.value = PromptPendingState(data, latch, result)
             }
-            override fun onShowSingleSelection(data: SingleSelectionDialogData, callback: (Int?) -> Unit) {
-                selectionStateRef.value = SelectionPendingState(data, callback)
+            override fun onShowSingleSelection(data: SingleSelectionDialogData, latch: CountDownLatch, result: IntArray) {
+                selectionStateRef.value = SelectionPendingState(data, latch, result)
             }
             override fun onSaveImportedCourses(coursesJson: String, callback: (Boolean, String?) -> Unit) {
                 importState = ImportState.Parsing
@@ -249,8 +286,11 @@ private fun WebViewScreenContent(intent: Intent) {
             }
             override fun onTaskCompleted() {
                 coroutineScope.launch {
-                    importState = ImportState.Success("导入完成")
-                    HostCompat.isImportFinished = true
+                    // 仅在 Loading 状态下（表示脚本执行完但没报错也没存数据）重置回 Idle
+                    // 不再盲目显示“导入完成”，避免用户困惑
+                    if (importState is ImportState.Loading) {
+                        importState = ImportState.Idle
+                    }
                 }
             }
         }
@@ -258,240 +298,248 @@ private fun WebViewScreenContent(intent: Intent) {
 
     Scaffold(
         topBar = {
-            SmallTopAppBar(title = intentTitle)
+            SmallTopAppBar(
+                title = intentTitle,
+                actions = {
+                    IconButton(onClick = {
+                        webViewState.content = WebContent.Url(url)
+                        importState = ImportState.Idle
+                    }) {
+                        Icon(imageVector = MiuixIcons.Refresh, contentDescription = "刷新")
+                    }
+                }
+            )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
-                .overScrollVertical()
                 .navigationBarsPadding()
                 .imePadding()
         ) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextField(
-                        value = url,
-                        onValueChange = { newValue: String ->
-                            url = newValue
-                            if (newValue.isNotBlank()) {
-                                context.writablePrefs().edit().putString("jw_webview_url", newValue).apply()
-                            }
-                        },
-                        label = "教务链接",
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = {
-                        webViewState.content = WebContent.Url(url)
-                    }) {
-                        Icon(imageVector = MiuixIcons.Download, contentDescription = "前往")
-                    }
-                }
-            }
-
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(450.dp)
-                ) {
-                    WebView(
-                        state = webViewState,
-                        modifier = Modifier.matchParentSize(),
-                        navigator = navigator,
-                        captureBackPresses = false,
-                        client = remember {
-                            object : AccompanistWebViewClient() {
-                                override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
-                                    super.onPageStarted(view, url, favicon)
-                                    webViewLoading = true
-                                }
-
-                                override fun onPageFinished(view: WebView, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    webViewLoading = false
-                                    CookieManager.getInstance().flush()
-                                }
-                            }
-                        },
-                        onCreated = { webView ->
-                            webViewRef = webView
-                            webView.settings.apply {
-                                javaScriptEnabled = true
-                                domStorageEnabled = true
-                                databaseEnabled = true
-                            }
-                            // 阻止外层 LazyColumn 拦截触摸事件，让 WebView 能正常滚动
-                            webView.setOnTouchListener { v, event ->
-                                when (event.action) {
-                                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
-                                        v.parent?.requestDisallowInterceptTouchEvent(true)
-                                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                                        v.parent?.requestDisallowInterceptTouchEvent(false)
-                                }
-                                false
-                            }
-                            val bridge = AndroidBridge(context, webView, bridgeCallback)
-                            webView.addJavascriptInterface(bridge, "AndroidBridge")
-                            webView.addJavascriptInterface(bridge, "app")
-                        }
-                    )
-
-                    if (webViewLoading) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
-                    }
-                }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 状态显示
-                if (intentText.isNotBlank()) {
-                    Text(intentText, color = MiuixTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
-                }
-            }
-
-            item {
-                when (val state = importState) {
-                    is ImportState.Loading -> {
-                        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.size(8.dp))
-                                Text("正在解析...")
-                            }
-                        }
-                    }
-                    is ImportState.Parsing -> {
-                        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.size(8.dp))
-                                Text("正在导入...")
-                            }
-                        }
-                    }
-                    is ImportState.Success -> {
-                        Text("✅ ${state.message}", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
-                    }
-                    is ImportState.Error -> {
-                        Text("❌ ${state.message}", color = MiuixTheme.colorScheme.error, fontSize = 12.sp)
-                    }
-                    ImportState.Idle -> {}
-                }
-            }
-
-            item {
+            // URL Area
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 TextField(
-                    value = tableName,
-                    onValueChange = { tableName = it },
-                    label = "课表名称"
+                    value = url,
+                    onValueChange = { newValue: String ->
+                        url = newValue
+                        if (newValue.isNotBlank()) {
+                            context.writablePrefs().edit().putString("jw_webview_url", newValue).apply()
+                        }
+                    },
+                    label = "教务链接",
+                    modifier = Modifier.weight(1f)
                 )
+                IconButton(onClick = {
+                    webViewState.content = WebContent.Url(url)
+                }) {
+                    Icon(imageVector = MiuixIcons.Download, contentDescription = "前往")
+                }
             }
 
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
-                    onClick = {
-                        if (tableName.isBlank()) {
-                            importState = ImportState.Error("请输入课表名称")
-                            return@Button
-                        }
-                        importState = ImportState.Loading
-                        
-                        if (intentScript.isNotBlank()) {
-                            // 先注入 window.AndroidBridgePromise JS 胶水，再执行适配器脚本
-                            val glueJs = """
-    (function(){
-      if(window.AndroidBridgePromise)return;
-      var reg={};
-      window._resolveAndroidPromise=function(id,r){var p=reg[id];if(p){delete reg[id];p[0](r);}};
-      window._rejectAndroidPromise=function(id,e){var p=reg[id];if(p){delete reg[id];p[1](new Error(e));}};
-      function mkp(fn){return new Promise(function(res,rej){var id='_bp'+Date.now()+Math.random().toString(36).slice(2);reg[id]=[res,rej];fn(id);});}
-      window.AndroidBridgePromise={
-        showAlert:function(t,c,b){return mkp(function(id){AndroidBridge.showAlert(t,c,b,id);});},
-        showPrompt:function(t,p,d,v){return mkp(function(id){AndroidBridge.showPrompt(t,p,d||'',v||'',id);});},
-        showSingleSelection:function(t,i,d){return mkp(function(id){AndroidBridge.showSingleSelection(t,i,d!=null?d:-1,id);});},
-        saveImportedCourses:function(j){return mkp(function(id){AndroidBridge.saveImportedCourses(j,id);});},
-        saveCourseConfig:function(j){return mkp(function(id){AndroidBridge.saveCourseConfig(j,id);});},
-        savePresetTimeSlots:function(j){return mkp(function(id){AndroidBridge.savePresetTimeSlots(j,id);});}
-      };
-    })();""".trimIndent()
-                            webViewRef?.evaluateJavascript(glueJs) {
-                                webViewRef?.evaluateJavascript(intentScript, null)
+            // WebView Area - Fills available space
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(MiuixTheme.colorScheme.surface) // 确保背景色不是全透明以排查白屏
+            ) {
+                WebView(
+                    state = webViewState,
+                    modifier = Modifier.fillMaxSize(),
+                    navigator = navigator,
+                    captureBackPresses = false,
+                    client = remember {
+                        object : AccompanistWebViewClient() {
+                            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                                super.onPageStarted(view, url, favicon)
+                                webViewLoading = true
+                                // 如果正在解析过程中发生了页面跳转，通常意味着脚本预期发生了变化，重置状态
+                                if (importState is ImportState.Loading) {
+                                    importState = ImportState.Idle
+                                }
                             }
-                        } else {
-                            webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                                coroutineScope.launch {
-                                    try {
-                                        val appId = HostCompat.getAppId()
-                                        val serviceToken = HostCompat.getAccessToken(context)
-                                        val deviceId = HostCompat.getDeviceId(context)
-                                        
-                                        if (serviceToken == null || deviceId == null) {
-                                            importState = ImportState.Error("无法获取令牌")
-                                            return@launch
-                                        }
 
-                                        withContext(Dispatchers.IO) {
-                                            val prefs = context.writablePrefs()
-                                            val apiKey = prefs.getString("api_key", "") ?: ""
-                                            val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
-                                            val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
+                            override fun onPageFinished(view: WebView, url: String?) {
+                                super.onPageFinished(view, url)
+                                webViewLoading = false
+                                CookieManager.getInstance().flush()
+                                view.evaluateJavascript(BRIDGE_GLUE_JS, null)
+                            }
 
-                                            ApiClient.parseCoursesStreaming(
-                                                html,
-                                                apiKey,
-                                                modelName,
-                                                apiUrl,
-                                                ApiClient.SYSTEM_PROMPT,
-                                                object : ApiClient.ParseCallback {
-                                                    override fun onUpdate(reasoning: String, content: String) {}
-                                                    override fun onSuccess(result: ParseResult) {
-                                                coroutineScope.launch {
-                                                    try {
-                                                        importState = ImportState.Parsing
-                                                        CourseRepository.importCourses(
-                                                            context,
-                                                            appId,
-                                                            tableName.trim(),
-                                                            result.courses
-                                                        )
-                                                        importState = ImportState.Success("AI解析并导入成功")
-                                                    } catch (e: Exception) {
-                                                        importState = ImportState.Error(e.message ?: "导入报错")
-                                                    }
-                                                }
+                            override fun onReceivedSslError(
+                                view: WebView,
+                                handler: SslErrorHandler,
+                                error: android.net.http.SslError
+                            ) {
+                                handler.proceed()
+                            }
+                        }
+                    },
+                    chromeClient = remember {
+                        object : AccompanistWebChromeClient() {
+                            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                                consoleMessage?.let {
+                                    Log.d("WebViewConsole", "[${it.messageLevel()}] ${it.message()} (at ${it.sourceId()}:${it.lineNumber()})")
+                                }
+                                return super.onConsoleMessage(consoleMessage)
+                            }
+                        }
+                    },
+                    onCreated = { webView ->
+                        webViewRef = webView
+                        webView.settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true
+                            databaseEnabled = true
+                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        }
+                        CookieManager.getInstance().apply {
+                            setAcceptCookie(true)
+                            setAcceptThirdPartyCookies(webView, true)
+                        }
+                        val bridge = AndroidBridge(context, webView, bridgeCallback)
+                        webView.addJavascriptInterface(bridge, "AndroidBridge")
+                        webView.addJavascriptInterface(bridge, "app")
+                    }
+                )
+
+                if (webViewLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
+                }
+            }
+
+            // Bottom Control Panel
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .heightIn(max = 240.dp)
+            ) {
+                item {
+                    if (intentText.isNotBlank()) {
+                        Text(intentText, color = MiuixTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+                    }
+                }
+
+                item {
+                    when (val state = importState) {
+                        is ImportState.Loading -> {
+                            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text("正在解析脚本...", fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    TextButton(text = "取消", onClick = { importState = ImportState.Idle })
+                                }
+                            }
+                        }
+                        is ImportState.Parsing -> {
+                            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text("正在导入课程...", fontSize = 14.sp)
+                                }
+                            }
+                        }
+                        is ImportState.Success -> {
+                            Text("✅ ${state.message}", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        is ImportState.Error -> {
+                            Text("❌ ${state.message}", color = MiuixTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        ImportState.Idle -> {}
+                    }
+                }
+
+                item {
+                    TextField(
+                        value = tableName,
+                        onValueChange = { tableName = it },
+                        label = "课表名称"
+                    )
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
+                        onClick = {
+                            if (tableName.isBlank()) {
+                                importState = ImportState.Error("请输入课表名称")
+                                return@Button
+                            }
+                            importState = ImportState.Loading
+                            Log.d("WebViewScreen", "开始点击解析, webViewRef is ${if(webViewRef == null) "NULL" else "NOT NULL"}")
+                            if (intentScript.isNotBlank()) {
+                                Log.d("WebViewScreen", "注入并运行脚本, 长度: ${intentScript.length}")
+                                webViewRef?.evaluateJavascript(BRIDGE_GLUE_JS) {
+                                    webViewRef?.evaluateJavascript(intentScript) { res ->
+                                        Log.d("WebViewScreen", "脚本执行完成, 返回值: $res")
+                                        coroutineScope.launch {
+                                            if (importState is ImportState.Loading) {
+                                                importState = ImportState.Idle
                                             }
-                                                    override fun onError(e: Exception) {
-                                                        coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
-                                                    }
-                                                }
-                                            )
                                         }
-                                    } catch (e: Exception) {
-                                        importState = ImportState.Error(e.message ?: "加载失败")
+                                    }
+                                }
+                            } else {
+                                webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                    coroutineScope.launch {
+                                        try {
+                                            val appId = HostCompat.getAppId()
+                                            val serviceToken = HostCompat.getAccessToken(context)
+                                            val deviceId = HostCompat.getDeviceId(context)
+                                            if (serviceToken == null || deviceId == null) {
+                                                importState = ImportState.Error("无法获取令牌")
+                                                return@launch
+                                            }
+
+                                            withContext(Dispatchers.IO) {
+                                                val prefs = context.writablePrefs()
+                                                val apiKey = prefs.getString("api_key", "") ?: ""
+                                                val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
+                                                val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
+
+                                                ApiClient.parseCoursesStreaming(
+                                                    html, apiKey, modelName, apiUrl, ApiClient.SYSTEM_PROMPT,
+                                                    object : ApiClient.ParseCallback {
+                                                        override fun onUpdate(reasoning: String, content: String) {}
+                                                        override fun onSuccess(result: ParseResult) {
+                                                            coroutineScope.launch {
+                                                                try {
+                                                                    importState = ImportState.Parsing
+                                                                    CourseRepository.importCourses(context, appId, tableName.trim(), result.courses)
+                                                                    importState = ImportState.Success("AI解析并导入成功")
+                                                                } catch (e: Exception) {
+                                                                    importState = ImportState.Error(e.message ?: "导入失败")
+                                                                }
+                                                            }
+                                                        }
+                                                        override fun onError(e: Exception) {
+                                                            coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        } catch (e: Exception) {
+                                            importState = ImportState.Error(e.message ?: "操作异常")
+                                        }
                                     }
                                 }
                             }
                         }
+                    ) {
+                        Text(if (webViewLoading) "页面加载中..." else "开始解析导入")
                     }
-                ) {
-                    Text(if (webViewLoading) "正在加载页面..." else "开始解析导入")
                 }
-            }
-            
-            item {
-                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
@@ -512,7 +560,8 @@ private fun WebViewScreenContent(intent: Intent) {
                         Spacer(modifier = Modifier.weight(1f))
                         Button(onClick = {
                             alertStateRef.value = null
-                            alert.callback(true)
+                            alert.result[0] = true
+                            alert.latch.countDown()
                         }) {
                             Text(alert.data.confirmText.ifBlank { "确定" })
                         }
@@ -544,7 +593,8 @@ private fun WebViewScreenContent(intent: Intent) {
                         Button(
                             onClick = {
                                 promptStateRef.value = null
-                                prompt.callback(null)
+                                prompt.result[0] = null
+                                prompt.latch.countDown()
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text("取消") }
@@ -553,7 +603,8 @@ private fun WebViewScreenContent(intent: Intent) {
                             onClick = {
                                 val input = promptInputRef.value
                                 promptStateRef.value = null
-                                prompt.callback(input)
+                                prompt.result[0] = input
+                                prompt.latch.countDown()
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text("确定") }
@@ -568,7 +619,8 @@ private fun WebViewScreenContent(intent: Intent) {
     if (selection != null) {
         Dialog(onDismissRequest = {
             selectionStateRef.value = null
-            selection.callback(null)
+            selection.result[0] = -1
+            selection.latch.countDown()
         }) {
             Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                 Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) {
@@ -582,7 +634,8 @@ private fun WebViewScreenContent(intent: Intent) {
                                     .fillMaxWidth()
                                     .clickable {
                                         selectionStateRef.value = null
-                                        selection.callback(index)
+                                        selection.result[0] = index
+                                        selection.latch.countDown()
                                     }
                                     .padding(horizontal = 16.dp, vertical = 12.dp)
                             )
@@ -592,7 +645,8 @@ private fun WebViewScreenContent(intent: Intent) {
                     Button(
                         onClick = {
                             selectionStateRef.value = null
-                            selection.callback(null)
+                            selection.result[0] = -1
+                            selection.latch.countDown()
                         },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                     ) { Text("取消") }
