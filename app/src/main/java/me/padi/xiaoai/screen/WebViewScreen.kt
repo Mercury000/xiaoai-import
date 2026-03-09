@@ -487,6 +487,21 @@ private fun WebViewScreenContent(intent: Intent) {
                                 override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
                                     handler.proceed()
                                 }
+
+                                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                                    val url = request.url.toString()
+                                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                                        return false
+                                    }
+                                    try {
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url)
+                                        view.context.startActivity(intent)
+                                        return true
+                                    } catch (e: Exception) {
+                                        Log.e("WebViewScreen", "Failed to launch intent for URL: $url", e)
+                                        return true // Return true to consume the click even if it fails
+                                    }
+                                }
                             }
 
                             this.webChromeClient = object : android.webkit.WebChromeClient() {
@@ -512,10 +527,15 @@ private fun WebViewScreenContent(intent: Intent) {
                                 }
                                 
                                 override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
-                                    val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
-                                    transport?.setWebView(view)
-                                    resultMsg.sendToTarget()
-                                    return true
+                                    // 许多闪退是因为在同一 WebView 中处理多窗口时状态冲突
+                                    // 给 transport 设置一个已经存在的 WebView 并直接返回 true 可能导致某些设备闪退
+                                    // 如果只是想在当前窗口打开，推荐返回 false 让父类或默认逻辑处理，或者手动 loadUrl
+                                    val url = view.hitTestResult.extra
+                                    if (url != null) {
+                                        view.loadUrl(url)
+                                        return false
+                                    }
+                                    return false
                                 }
                             }
 
@@ -537,7 +557,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                 setGeolocationEnabled(true)
                                 javaScriptCanOpenWindowsAutomatically = true
                                 mediaPlaybackRequiresUserGesture = false
-                                setSupportMultipleWindows(true)
+                                setSupportMultipleWindows(false)
                                 setSupportZoom(true)
                                 builtInZoomControls = true
                                 displayZoomControls = false
