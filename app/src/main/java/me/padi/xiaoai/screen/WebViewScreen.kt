@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
@@ -42,12 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kevinnzou.web.AccompanistWebChromeClient
-import com.kevinnzou.web.AccompanistWebViewClient
-import com.kevinnzou.web.WebContent
-import com.kevinnzou.web.WebView
-import com.kevinnzou.web.rememberWebViewNavigator
-import com.kevinnzou.web.rememberWebViewState
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.viewinterop.AndroidView
 import me.padi.xiaoai.ApiClient
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
@@ -84,6 +82,7 @@ import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -94,25 +93,68 @@ private val BRIDGE_GLUE_JS = """
 (function(){
   try {
     console.log('Bridge Glue: Starting injection...');
-    if(window.AndroidBridgePromise){
+    if(window._bridgeInjected){
        console.log('Bridge Glue: Already exists, skipping.');
        return;
     }
-    window.AndroidBridgePromise={
-      showAlert:function(t,c,b){ console.log('Bridge: showAlert called'); return AndroidBridge.showAlert(t,c,b); },
-      showPrompt:function(t,p,d,v){ console.log('Bridge: showPrompt called'); return AndroidBridge.showPrompt(t,p,d||'',v||''); },
-      showSingleSelection:function(t,i,d){ console.log('Bridge: showSingleSelection called'); return AndroidBridge.showSingleSelection(t,i,d!=null?d:-1); },
-      saveImportedCourses:function(j){ return AndroidBridge.saveImportedCourses(j, ''); },
-      saveCourseConfig:function(j){ return AndroidBridge.saveCourseConfig(j, ''); },
-      savePresetTimeSlots:function(j){ return AndroidBridge.savePresetTimeSlots(j, ''); },
-      notifyTaskCompletion:function(){ AndroidBridge.notifyTaskCompletion(); }
+    window._bridgeInjected = true;
+    var reg={};
+    window._resolveAndroidPromise=function(id,r){
+       console.log('Bridge Glue: Resolving ' + id);
+       var p=reg[id];if(p){delete reg[id];p[0](r);}
     };
-    // 兼容性挂载
-    window.app = window.app || {};
-    window.app.showAlert = window.AndroidBridgePromise.showAlert;
-    window.app.showPrompt = window.AndroidBridgePromise.showPrompt;
+    window._rejectAndroidPromise=function(id,e){
+       console.error('Bridge Glue: Rejecting ' + id, e);
+       var p=reg[id];if(p){delete reg[id];p[1](new Error(e));}
+    };
+    function mkp(fn){return new Promise(function(res,rej){var id='_bp'+Date.now()+Math.random().toString(36).slice(2);reg[id]=[res,rej];fn(id);});}
+    function sarg(a){ return typeof a === 'string' ? a : JSON.stringify(a); }
     
-    console.log('Bridge Glue: Injected successfully (Sync Mode).');
+    // 针对旧版适配器设计的同步桥接挂载（阻塞式）
+    window.app = window.app || {};
+    window.app.showAlert = function(t,c,b){ 
+        console.log('Sync Bridge: showAlert called'); 
+        if (arguments.length === 1) return AndroidBridge.showAlert(sarg(t));
+        if (arguments.length === 2) return AndroidBridge.showAlert(sarg(t), sarg(c));
+        return AndroidBridge.showAlert(sarg(t), sarg(c), sarg(b || '确定')); 
+    };
+    window.app.showPrompt = function(t,p,d,v){ 
+        console.log('Sync Bridge: showPrompt called'); 
+        if (arguments.length === 1) return AndroidBridge.showPrompt(sarg(t), "");
+        if (arguments.length === 2) return AndroidBridge.showPrompt(sarg(t), sarg(p));
+        if (arguments.length === 3) return AndroidBridge.showPrompt(sarg(t), sarg(p), sarg(d));
+        return AndroidBridge.showPrompt(sarg(t), sarg(p), sarg(d || ''), sarg(v || '')); 
+    };
+    window.app.showSingleSelection = function(t,i,d){ 
+        console.log('Sync Bridge: showSingleSelection called'); 
+        if (arguments.length === 1) return AndroidBridge.showSingleSelection(sarg(t), "[]");
+        if (arguments.length === 2) return AndroidBridge.showSingleSelection(sarg(t), sarg(i));
+        return AndroidBridge.showSingleSelection(sarg(t), sarg(i), d != null ? d : -1); 
+    };
+    window.app.saveImportedCourses = function(j){ return AndroidBridge.saveImportedCourses(sarg(j)); };
+    window.app.saveCourseConfig = function(j){ return AndroidBridge.saveCourseConfig(sarg(j)); };
+    window.app.savePresetTimeSlots = function(j){ return AndroidBridge.savePresetTimeSlots(sarg(j)); };
+    window.app.postData = function(m){ return AndroidBridge.postData(sarg(m)); };
+    window.app.reportError = function(e){ return AndroidBridge.reportError(sarg(e)); };
+    window.app.notifyTaskCompleted = function(){ AndroidBridge.notifyTaskCompleted(); };
+    window.app.postHtml = function(h){ AndroidBridge.postHtml(sarg(h)); };
+    window.app.closeWebView = function(){ AndroidBridge.onTaskCompleted(); };
+    window.app.close = window.app.closeWebView;
+    
+    window.AndroidBridge = window.app; // 保证 window.AndroidBridge 也有相同别名
+    
+    // 同时也保留异步注入，供新版或 AI 模式使用
+    window.AndroidBridgePromise = {
+      showAlert:function(t,c,b){ return mkp(function(id){AndroidBridge.showAlertAsync(sarg(t),sarg(c),sarg(b),id);});},
+      showPrompt:function(t,p,d,v){ return mkp(function(id){AndroidBridge.showPromptAsync(sarg(t),sarg(p),sarg(d||''),sarg(v||''),id);});},
+      showSingleSelection:function(t,i,d){ return mkp(function(id){AndroidBridge.showSingleSelectionAsync(sarg(t),sarg(i),d!=null?d:-1,id);});},
+      saveImportedCourses:function(j){ return mkp(function(id){AndroidBridge.saveImportedCourses(sarg(j),id);});},
+      saveCourseConfig:function(j){ return mkp(function(id){AndroidBridge.saveCourseConfig(sarg(j),id);});},
+      savePresetTimeSlots:function(j){ return mkp(function(id){AndroidBridge.savePresetTimeSlots(sarg(j),id);});},
+      notifyTaskCompleted:function(){ AndroidBridge.notifyTaskCompleted(); }
+    };
+
+    console.log('Bridge Glue: Injected successfully (Ultimate Hybrid Mode).');
   } catch(e) { console.error('Bridge Glue: Error during injection', e); }
 })();
 """.trimIndent()
@@ -135,30 +177,81 @@ class WebViewScreen : BaseActivity() {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun WebViewScreenContent(intent: Intent) {
-    val navigator = rememberWebViewNavigator()
-    var webViewLoading by remember { mutableStateOf(false) }
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
-
     // 获取 Intent 参数
     val intentUrl = intent.getStringExtra("url") ?: ""
     val intentTitle = intent.getStringExtra("title") ?: "导入课程表"
     val intentScript = intent.getStringExtra("script") ?: ""
     val intentText = intent.getStringExtra("text") ?: ""
     val context = LocalContext.current
-    
+
+    var webViewLoading by remember { mutableStateOf(false) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var url by remember { mutableStateOf(intentUrl.ifBlank { HookEntry.prefs.getString("jw_webview_url", "") }) }
+    var lastLoadedUrl by remember { mutableStateOf(url) }
     var tableName by remember { mutableStateOf("") }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
+    val currentImportState by rememberUpdatedState(importState)
 
     val coroutineScope = rememberCoroutineScope()
-    val initialUrl = remember { url }
-    val webViewState = rememberWebViewState(initialUrl)
+    
+    var canGoBack by remember { mutableStateOf(false) }
+    
+    // BackHandler 处理
+    BackHandler(enabled = canGoBack) {
+        webViewRef?.goBack()
+    }
 
     // 对话框状态（用显式 MutableState ref 以便在 remember 闭包中捕获）
     val alertStateRef: MutableState<AlertPendingState?> = remember { mutableStateOf(null) }
     val promptStateRef: MutableState<PromptPendingState?> = remember { mutableStateOf(null) }
     val selectionStateRef: MutableState<SelectionPendingState?> = remember { mutableStateOf(null) }
     val promptInputRef: MutableState<String> = remember { mutableStateOf("") }
+
+    /** 抽取出来的 AI 源码解析逻辑，避免与 Bridge 交互逻辑混杂 */
+    fun processHtmlForAi(html: String) {
+        Log.d("WebViewScreen", "开始 processHtmlForAi, html 长度: ${html.length}")
+        coroutineScope.launch {
+            try {
+                val appId = HostCompat.getAppId()
+                val serviceToken = HostCompat.getAccessToken(context)
+                val deviceId = HostCompat.getDeviceId(context)
+                if (serviceToken == null || deviceId == null) {
+                    importState = ImportState.Error("无法获取令牌")
+                    return@launch
+                }
+
+                withContext(Dispatchers.IO) {
+                    val prefs = context.writablePrefs()
+                    val apiKey = prefs.getString("api_key", "") ?: ""
+                    val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
+                    val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
+
+                    ApiClient.parseCoursesStreaming(
+                        html, apiKey, modelName, apiUrl, ApiClient.SYSTEM_PROMPT,
+                        object : ApiClient.ParseCallback {
+                            override fun onUpdate(reasoning: String, content: String) {}
+                            override fun onSuccess(result: ParseResult) {
+                                coroutineScope.launch {
+                                    try {
+                                        importState = ImportState.Parsing()
+                                        CourseRepository.importCourses(context, appId, tableName.ifBlank { "提取课表" }.trim(), result.courses)
+                                        importState = ImportState.Success("AI解析并导入成功")
+                                    } catch (e: Exception) {
+                                        importState = ImportState.Error(e.message ?: "导入失败")
+                                    }
+                                }
+                            }
+                            override fun onError(e: Exception) {
+                                coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
+                            }
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                importState = ImportState.Error(e.message ?: "操作异常")
+            }
+        }
+    }
 
     val bridgeCallback = remember {
         object : BridgeCallback {
@@ -173,12 +266,17 @@ private fun WebViewScreenContent(intent: Intent) {
                 selectionStateRef.value = SelectionPendingState(data, latch, result)
             }
             override fun onSaveImportedCourses(coursesJson: String, callback: (Boolean, String?) -> Unit) {
-                importState = ImportState.Parsing
+                importState = ImportState.Parsing("正在解析课程数据...")
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
                         val root = try { JSONObject(coursesJson) } catch (e: Exception) { null }
                         val coursesArray = if (root != null) {
-                            root.optJSONArray("courses") ?: JSONArray()
+                            if (root.has("courses")) root.getJSONArray("courses")
+                            else if (root.has("parserRes")) {
+                                val pr = root.get("parserRes")
+                                if (pr is JSONArray) pr else JSONObject(pr.toString()).getJSONArray("courses")
+                            }
+                            else JSONArray().put(root)
                         } else {
                             JSONArray(coursesJson)
                         }
@@ -195,9 +293,8 @@ private fun WebViewScreenContent(intent: Intent) {
                             val isCustomTime = courseJson.optBoolean("isCustomTime", false)
                             val sectionsArr = courseJson.optJSONArray("sections")
                             c.sections = if (isCustomTime) {
-                                "1"  // 自定义时间课程，小爱接口不支持，用最小节次占位
+                                "1"
                             } else if (sectionsArr != null) {
-                                // zf.js / 拾光格式: sections 是数字数组 [1,2,3]
                                 buildString {
                                     for (j in 0 until sectionsArr.length()) {
                                         if (j > 0) append(",")
@@ -205,7 +302,6 @@ private fun WebViewScreenContent(intent: Intent) {
                                     }
                                 }
                             } else {
-                                // AI 解析格式 / 拾光仓库格式: startSection + endSection
                                 val start = courseJson.optInt("startSection", -1)
                                 val end = courseJson.optInt("endSection", -1)
                                 if (start != -1 && end != -1) {
@@ -244,7 +340,7 @@ private fun WebViewScreenContent(intent: Intent) {
                         CourseRepository.importCourses(context, appId, tableName.ifBlank { "提取课表" }, courses, schedule)
                         
                         withContext(Dispatchers.Main) {
-                            importState = ImportState.Success("导入成功")
+                            importState = ImportState.Success("完成！已导入至 $tableName")
                             HostCompat.isImportFinished = true
                             callback(true, null)
                         }
@@ -286,12 +382,17 @@ private fun WebViewScreenContent(intent: Intent) {
             }
             override fun onTaskCompleted() {
                 coroutineScope.launch {
-                    // 仅在 Loading 状态下（表示脚本执行完但没报错也没存数据）重置回 Idle
-                    // 不再盲目显示“导入完成”，避免用户困惑
-                    if (importState is ImportState.Loading) {
+                    if (currentImportState is ImportState.Loading || currentImportState is ImportState.Parsing) {
                         importState = ImportState.Idle
                     }
                 }
+            }
+            override fun onReceiveHtml(html: String) {
+                importState = ImportState.Loading("接收到源码，正在处理...")
+                processHtmlForAi(html)
+            }
+            override fun onError(message: String) {
+                importState = ImportState.Error(message)
             }
         }
     }
@@ -302,7 +403,7 @@ private fun WebViewScreenContent(intent: Intent) {
                 title = intentTitle,
                 actions = {
                     IconButton(onClick = {
-                        webViewState.content = WebContent.Url(url)
+                        webViewRef?.reload()
                         importState = ImportState.Idle
                     }) {
                         Icon(imageVector = MiuixIcons.Refresh, contentDescription = "刷新")
@@ -335,78 +436,133 @@ private fun WebViewScreenContent(intent: Intent) {
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = {
-                    webViewState.content = WebContent.Url(url)
+                    webViewRef?.loadUrl(url)
                 }) {
                     Icon(imageVector = MiuixIcons.Download, contentDescription = "前往")
                 }
             }
 
-            // WebView Area - Fills available space
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(MiuixTheme.colorScheme.surface) // 确保背景色不是全透明以排查白屏
             ) {
-                WebView(
-                    state = webViewState,
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            this.webViewClient = object : android.webkit.WebViewClient() {
+                                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                                    super.onPageStarted(view, url, favicon)
+                                    webViewLoading = true
+                                    canGoBack = view.canGoBack()
+                                    lastLoadedUrl = url
+                                    Log.d("WebViewScreen", "onPageStarted: $url")
+                                    val isTransientUrl = url == "about:blank" || url == null
+                                    if (currentImportState is ImportState.Loading && !isTransientUrl) {
+                                        importState = ImportState.Idle
+                                    }
+                                }
+
+                                override fun onPageFinished(view: WebView, url: String) {
+                                    super.onPageFinished(view, url)
+                                    webViewLoading = false
+                                    canGoBack = view.canGoBack()
+                                    Log.d("WebViewScreen", "onPageFinished: $url")
+                                    CookieManager.getInstance().flush()
+                                    view.evaluateJavascript(BRIDGE_GLUE_JS, null)
+                                }
+
+                                override fun onReceivedError(view: WebView, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                                    super.onReceivedError(view, request, error)
+                                    Log.e("WebViewScreen", "WebView Error: ${error?.description}")
+                                }
+
+                                override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                                    Log.e("WebViewScreen", "Render process gone! Reason: ${detail.rendererPriorityAtExit()}")
+                                    importState = ImportState.Error("渲染进程崩溃，正在恢复...")
+                                    view.reload()
+                                    return true
+                                }
+                                
+                                override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
+                                    handler.proceed()
+                                }
+                            }
+
+                            this.webChromeClient = object : android.webkit.WebChromeClient() {
+                                override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                                    consoleMessage?.let {
+                                        Log.d("WebViewConsole", "[${it.messageLevel()}] ${it.message()}")
+                                    }
+                                    return true
+                                }
+                                override fun onJsAlert(view: WebView, url: String, message: String, result: android.webkit.JsResult): Boolean {
+                                    val latch = CountDownLatch(1)
+                                    val res = BooleanArray(1) { false }
+                                    bridgeCallback.onShowAlert(AlertDialogData("来自网页的消息", message, "确定"), latch, res)
+                                    Thread { latch.await(); view.post { result.confirm() } }.start()
+                                    return true
+                                }
+                                override fun onJsConfirm(view: WebView, url: String, message: String, result: android.webkit.JsResult): Boolean {
+                                    val latch = CountDownLatch(1)
+                                    val res = BooleanArray(1) { false }
+                                    bridgeCallback.onShowAlert(AlertDialogData("请确认", message, "确定"), latch, res)
+                                    Thread { latch.await(); view.post { if (res[0]) result.confirm() else result.cancel() } }.start()
+                                    return true
+                                }
+                                
+                                override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
+                                    val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
+                                    transport?.setWebView(view)
+                                    resultMsg.sendToTarget()
+                                    return true
+                                }
+                            }
+
+                            settings.apply {
+                                javaScriptEnabled = true
+                                useWideViewPort = true
+                                loadWithOverviewMode = true
+                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 XiaoAi/1.0"
+                                textZoom = 100
+
+                                // 增强加载与兼容性设置
+                                allowFileAccess = true
+                                allowContentAccess = true
+                                setAllowFileAccessFromFileURLs(true)
+                                setAllowUniversalAccessFromFileURLs(true)
+                                databaseEnabled = true
+                                domStorageEnabled = true
+                                setGeolocationEnabled(true)
+                                javaScriptCanOpenWindowsAutomatically = true
+                                mediaPlaybackRequiresUserGesture = false
+                                setSupportMultipleWindows(true)
+                                setSupportZoom(true)
+                                builtInZoomControls = true
+                                displayZoomControls = false
+                            }
+
+                            val webView = this
+                            CookieManager.getInstance().apply {
+                                setAcceptCookie(true)
+                                setAcceptThirdPartyCookies(webView, true)
+                            }
+
+                            val bridge = AndroidBridge(context, this, bridgeCallback)
+                            addJavascriptInterface(bridge, "AndroidBridge")
+                            addJavascriptInterface(bridge, "app")
+                            
+                            webViewRef = this
+                            loadUrl(url)
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
-                    navigator = navigator,
-                    captureBackPresses = false,
-                    client = remember {
-                        object : AccompanistWebViewClient() {
-                            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
-                                super.onPageStarted(view, url, favicon)
-                                webViewLoading = true
-                                // 如果正在解析过程中发生了页面跳转，通常意味着脚本预期发生了变化，重置状态
-                                if (importState is ImportState.Loading) {
-                                    importState = ImportState.Idle
-                                }
-                            }
-
-                            override fun onPageFinished(view: WebView, url: String?) {
-                                super.onPageFinished(view, url)
-                                webViewLoading = false
-                                CookieManager.getInstance().flush()
-                                view.evaluateJavascript(BRIDGE_GLUE_JS, null)
-                            }
-
-                            override fun onReceivedSslError(
-                                view: WebView,
-                                handler: SslErrorHandler,
-                                error: android.net.http.SslError
-                            ) {
-                                handler.proceed()
-                            }
-                        }
-                    },
-                    chromeClient = remember {
-                        object : AccompanistWebChromeClient() {
-                            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
-                                consoleMessage?.let {
-                                    Log.d("WebViewConsole", "[${it.messageLevel()}] ${it.message()} (at ${it.sourceId()}:${it.lineNumber()})")
-                                }
-                                return super.onConsoleMessage(consoleMessage)
-                            }
-                        }
-                    },
-                    onCreated = { webView ->
-                        webViewRef = webView
-                        webView.settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            databaseEnabled = true
-                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                        }
-                        CookieManager.getInstance().apply {
-                            setAcceptCookie(true)
-                            setAcceptThirdPartyCookies(webView, true)
-                        }
-                        val bridge = AndroidBridge(context, webView, bridgeCallback)
-                        webView.addJavascriptInterface(bridge, "AndroidBridge")
-                        webView.addJavascriptInterface(bridge, "app")
+                    update = {
+                        // 如果有特殊更新逻辑可以放在这里，目前 loadUrl 已在 factory 处理
                     }
                 )
+
 
                 if (webViewLoading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
@@ -430,21 +586,27 @@ private fun WebViewScreenContent(intent: Intent) {
                     when (val state = importState) {
                         is ImportState.Loading -> {
                             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                    Spacer(modifier = Modifier.size(8.dp))
-                                    Text("正在解析脚本...", fontSize = 14.sp)
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    TextButton(text = "取消", onClick = { importState = ImportState.Idle })
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.size(8.dp))
+                                        Text(state.message, fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        TextButton(text = "重置", onClick = { importState = ImportState.Idle })
+                                    }
                                 }
                             }
                         }
                         is ImportState.Parsing -> {
                             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                    Spacer(modifier = Modifier.size(8.dp))
-                                    Text("正在导入课程...", fontSize = 14.sp)
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.size(8.dp))
+                                        Text(state.message, fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        TextButton(text = "取消", onClick = { importState = ImportState.Idle })
+                                    }
                                 }
                             }
                         }
@@ -476,63 +638,68 @@ private fun WebViewScreenContent(intent: Intent) {
                                 importState = ImportState.Error("请输入课表名称")
                                 return@Button
                             }
-                            importState = ImportState.Loading
+                            importState = ImportState.Loading("脚本启动中...")
                             Log.d("WebViewScreen", "开始点击解析, webViewRef is ${if(webViewRef == null) "NULL" else "NOT NULL"}")
+                            
+                            // 启动冗余超时保护：如果脚本执行挂起（例如 V8 死循环），10秒后强制复位
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(10000)
+                                if (importState is ImportState.Loading) {
+                                    Log.w("WebViewScreen", "冗余超时保护触发（10s），强制重置到 Idle")
+                                    importState = ImportState.Idle
+                                }
+                            }
                             if (intentScript.isNotBlank()) {
                                 Log.d("WebViewScreen", "注入并运行脚本, 长度: ${intentScript.length}")
                                 webViewRef?.evaluateJavascript(BRIDGE_GLUE_JS) {
-                                    webViewRef?.evaluateJavascript(intentScript) { res ->
-                                        Log.d("WebViewScreen", "脚本执行完成, 返回值: $res")
+                                    // 为脚本添加 try-catch 包装以防挂起
+                                    val wrappedScript = """
+                                        (function(){
+                                            console.log('WrappedScript: Started');
+                                            try {
+                                                $intentScript
+                                                console.log('WrappedScript: Execution reached end');
+                                                return "OK";
+                                            } catch(e) {
+                                                console.error('WrappedScript: Execution Error:', e);
+                                                if (window.app && window.app.reportError) window.app.reportError(e.message || e.toString());
+                                                AndroidBridge.notifyTaskCompleted();
+                                                return "Error";
+                                            }
+                                        })();
+                                    """.trimIndent()
+                                    webViewRef?.evaluateJavascript(wrappedScript) { res ->
+                                        Log.d("WebViewScreen", "脚本 evaluateJavascript 完成, 返回值: $res")
+                                        // 启动 10 秒超时检测：如果脚本执行完了但 10 秒后还没进入 Parsing 或 Success 状态，重置为 Idle
                                         coroutineScope.launch {
+                                            kotlinx.coroutines.delay(10000)
                                             if (importState is ImportState.Loading) {
+                                                Log.w("WebViewScreen", "脚本执行超时（10s），状态仍为 Loading，强制重置到 Idle")
                                                 importState = ImportState.Idle
                                             }
                                         }
                                     }
                                 }
                             } else {
-                                webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                                    coroutineScope.launch {
+                                Log.d("WebViewScreen", "AI 模式：通过桥接获取 HTML 源码（带安全校验）")
+                                val extractionScript = """
+                                    (function(){
                                         try {
-                                            val appId = HostCompat.getAppId()
-                                            val serviceToken = HostCompat.getAccessToken(context)
-                                            val deviceId = HostCompat.getDeviceId(context)
-                                            if (serviceToken == null || deviceId == null) {
-                                                importState = ImportState.Error("无法获取令牌")
-                                                return@launch
+                                            var html = (document.documentElement ? document.documentElement.outerHTML : document.body.innerHTML) || "";
+                                            if (html.length > 2000000) { // > 2MB 则降级
+                                                console.warn('HTML too large, using body only');
+                                                html = document.body.innerHTML;
                                             }
-
-                                            withContext(Dispatchers.IO) {
-                                                val prefs = context.writablePrefs()
-                                                val apiKey = prefs.getString("api_key", "") ?: ""
-                                                val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
-                                                val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
-
-                                                ApiClient.parseCoursesStreaming(
-                                                    html, apiKey, modelName, apiUrl, ApiClient.SYSTEM_PROMPT,
-                                                    object : ApiClient.ParseCallback {
-                                                        override fun onUpdate(reasoning: String, content: String) {}
-                                                        override fun onSuccess(result: ParseResult) {
-                                                            coroutineScope.launch {
-                                                                try {
-                                                                    importState = ImportState.Parsing
-                                                                    CourseRepository.importCourses(context, appId, tableName.trim(), result.courses)
-                                                                    importState = ImportState.Success("AI解析并导入成功")
-                                                                } catch (e: Exception) {
-                                                                    importState = ImportState.Error(e.message ?: "导入失败")
-                                                                }
-                                                            }
-                                                        }
-                                                        override fun onError(e: Exception) {
-                                                            coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                        } catch (e: Exception) {
-                                            importState = ImportState.Error(e.message ?: "操作异常")
+                                            AndroidBridge.postHtml(html);
+                                            return "Extraction Process Started";
+                                        } catch(e) {
+                                            console.error('Extraction Failed:', e);
+                                            return "Extraction Failed: " + e.message;
                                         }
-                                    }
+                                    })()
+                                """.trimIndent()
+                                webViewRef?.evaluateJavascript(extractionScript) { res ->
+                                    Log.d("WebViewScreen", "AI 提取脚本注入结果: $res")
                                 }
                             }
                         }

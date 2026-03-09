@@ -505,7 +505,7 @@ private fun SchoolListScreenContent(
                                 Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
-                            importState = ImportState.Loading
+                            importState = ImportState.Loading()
                             webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
                                 // evaluateJavascript 返回的是 JSON 编码字符串（带外层引号和转义），需解码
                                 val rawHtml = try { org.json.JSONArray("[$html]").getString(0) } catch (_: Exception) { html }
@@ -536,7 +536,7 @@ private fun SchoolListScreenContent(
                                                     override fun onSuccess(result: ParseResult) {
                                                         coroutineScope.launch {
                                                             try {
-                                                                 importState = ImportState.Parsing
+                                                                 importState = ImportState.Parsing()
                                                                  CourseRepository.importCourses(
                                                                      context,
                                                                      appId,
