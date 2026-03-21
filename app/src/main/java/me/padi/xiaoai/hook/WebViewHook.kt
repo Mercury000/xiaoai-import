@@ -77,8 +77,22 @@ object WebViewHook : YukiBaseHooker() {
     private const val ENTRY_POINT_SCRIPT = """
 (function() {
     if (typeof Android === 'undefined') return;
+    const OLD_TEXT = '教务导入系统暂停维护中';
+    const NEW_TEXT = '从教务系统中导入课表';
+    const replaceMaintenanceText = () => {
+        if (!document.body) return;
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+            if (node.nodeValue && node.nodeValue.indexOf(OLD_TEXT) !== -1) {
+                node.nodeValue = node.nodeValue.split(OLD_TEXT).join(NEW_TEXT);
+            }
+            node = walker.nextNode();
+        }
+    };
     const inject = () => {
         if (location.href.indexOf('/setting') === -1) return;
+        replaceMaintenanceText();
         const btn = document.getElementById('ai-class-shedule-fe-setting-button-jiaoyu');
         if (btn && !btn._padiAttached) {
             btn._padiAttached = true;
