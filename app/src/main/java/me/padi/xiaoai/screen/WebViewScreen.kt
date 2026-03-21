@@ -702,10 +702,73 @@ private fun WebViewScreenContent(intent: Intent) {
                                 val extractionScript = """
                                     (function(){
                                         try {
-                                            var html = (document.documentElement ? document.documentElement.outerHTML : document.body.innerHTML) || "";
+                                            var html = (document.documentElement ? document.documentElement.outerHTML : (document.body ? document.body.innerHTML : "")) || "";
+                                            var frameChunks = [];
+                                            var frameTexts = [];
+                                            var visited = new WeakSet();
+                                            function compactHtml(raw) {
+                                                if (!raw) return '';
+                                                return raw
+                                                    .replace(/<script[\s\S]*?<\/script>/gi, '')
+                                                    .replace(/<style[\s\S]*?<\/style>/gi, '')
+                                                    .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+                                                    .replace(/\s{2,}/g, ' ');
+                                            }
+                                            function collectFrames(win, path, depth) {
+                                                if (!win || depth > 3) return;
+                                                var doc = null;
+                                                try { doc = win.document; } catch (e) { return; }
+                                                if (!doc || !doc.querySelectorAll) return;
+                                                var frames = doc.querySelectorAll('iframe,frame');
+                                                for (var i = 0; i < frames.length; i++) {
+                                                    var el = frames[i];
+                                                    var tag = (el.tagName || 'iframe').toLowerCase();
+                                                    var src = el.getAttribute('src') || '';
+                                                    var id = el.id || '';
+                                                    var name = el.getAttribute('name') || '';
+                                                    var mark = 'frame=' + path + '.' + i + ' tag=' + tag + ' src=' + src + ' id=' + id + ' name=' + name;
+                                                    try {
+                                                        var childWin = el.contentWindow;
+                                                        if (!childWin) {
+                                                            frameChunks.push('<!-- XIAOAI_IFRAME_EMPTY ' + mark + ' -->');
+                                                            continue;
+                                                        }
+                                                        if (visited.has(childWin)) {
+                                                            frameChunks.push('<!-- XIAOAI_IFRAME_SKIP_VISITED ' + mark + ' -->');
+                                                            continue;
+                                                        }
+                                                        visited.add(childWin);
+                                                        var childDoc = childWin.document;
+                                                        var childHtml = (childDoc && childDoc.documentElement)
+                                                            ? childDoc.documentElement.outerHTML
+                                                            : ((childDoc && childDoc.body) ? childDoc.body.innerHTML : '');
+                                                        frameChunks.push('<!-- XIAOAI_IFRAME_BEGIN ' + mark + ' -->\\n' + compactHtml(childHtml || '') + '\\n<!-- XIAOAI_IFRAME_END ' + mark + ' -->');
+                                                        var childText = (childDoc && childDoc.body && childDoc.body.innerText) ? childDoc.body.innerText : '';
+                                                        if (childText) frameTexts.push('[IFRAME ' + mark + ']\\n' + childText);
+                                                        collectFrames(childWin, path + '.' + i, depth + 1);
+                                                    } catch (e) {
+                                                        frameChunks.push('<!-- XIAOAI_IFRAME_CROSS_ORIGIN ' + mark + ' -->');
+                                                    }
+                                                }
+                                            }
+                                            html = compactHtml(html);
+                                            collectFrames(window, 'root', 0);
+                                            if (frameChunks.length > 0) {
+                                                html += '\\n<!-- XIAOAI_IFRAME_CONTENT_BEGIN -->\\n' + frameChunks.join('\\n') + '\\n<!-- XIAOAI_IFRAME_CONTENT_END -->';
+                                            }
                                             if (html.length > 2000000) { // > 2MB 则降级
-                                                console.warn('HTML too large, using body only');
-                                                html = document.body.innerHTML;
+                                                var mainText = (document.body && document.body.innerText) ? document.body.innerText : '';
+                                                var textPayload = '[XIAOAI_TEXT_FALLBACK]\\n[MAIN_TEXT]\\n' + mainText;
+                                                if (frameTexts.length > 0) {
+                                                    textPayload += '\\n[IFRAME_TEXTS]\\n' + frameTexts.join('\\n\\n');
+                                                }
+                                                if (textPayload.length > 2000000) {
+                                                    console.warn('HTML/text payload too large, truncating text fallback');
+                                                    textPayload = textPayload.slice(0, 2000000);
+                                                } else {
+                                                    console.warn('HTML too large, switched to text fallback');
+                                                }
+                                                html = textPayload;
                                             }
                                             AndroidBridge.postHtml(html);
                                             return "Extraction Process Started";
