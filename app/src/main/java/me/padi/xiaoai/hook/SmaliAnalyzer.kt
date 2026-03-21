@@ -1,12 +1,13 @@
 package me.padi.xiaoai.hook
 
 import android.content.Context
-import android.util.Log
+import de.robv.android.xposed.XposedBridge
 import org.luckypray.dexkit.DexKitBridge
 
 object SmaliAnalyzer {
     private const val TAG = "SmaliAnalyzer"
     private const val PREFS_NAME = "hook_cache"
+    private fun lsp(msg: String) = XposedBridge.log("[$TAG] $msg")
 
     fun getOrResolveClass(
         context: Context,
@@ -19,10 +20,13 @@ object SmaliAnalyzer {
 
         if (cachedVersion == hostVersion) {
             val cachedName = prefs.getString(key, null)
-            if (!cachedName.isNullOrBlank()) return cachedName
+            if (!cachedName.isNullOrBlank()) {
+                lsp("cache hit: key=$key -> $cachedName (version=$hostVersion)")
+                return cachedName
+            }
         }
 
-        Log.i(TAG, "Resolving class for key: $key (Host version: $hostVersion)")
+        lsp("cache miss: key=$key (version=$hostVersion), start DexKit resolve")
         val resolvedName = resolver(context.classLoader)
 
         if (!resolvedName.isNullOrBlank()) {
@@ -31,7 +35,9 @@ object SmaliAnalyzer {
                 putString(key, resolvedName)
                 apply()
             }
-            Log.i(TAG, "Resolved and cached: $key -> $resolvedName")
+            lsp("resolved and cached: key=$key -> $resolvedName")
+        } else {
+            lsp("resolve failed: key=$key (version=$hostVersion)")
         }
         return resolvedName
     }
@@ -50,11 +56,12 @@ object SmaliAnalyzer {
 
     private fun findClassByDexKit(sourceDir: String, targets: List<String>): String? {
         return try {
+            lsp("DexKit open: targets=$targets")
             val bridge = DexKitBridge.create(sourceDir)
             try {
                 when {
                     targets.contains("token") -> {
-                        bridge.findClass {
+                        val result = bridge.findClass {
                             matcher {
                                 methods {
                                     add {
@@ -65,10 +72,12 @@ object SmaliAnalyzer {
                                 usingStrings("EngineAuthHelper", "access_token:")
                             }
                         }.firstOrNull()?.name
+                        lsp("DexKit token result: ${result ?: "null"}")
+                        result
                     }
 
                     targets.contains("device") -> {
-                        bridge.findClass {
+                        val result = bridge.findClass {
                             matcher {
                                 methods {
                                     add {
@@ -79,23 +88,29 @@ object SmaliAnalyzer {
                                 usingStrings("DeviceUtils")
                             }
                         }.firstOrNull()?.name
+                        lsp("DexKit device result: ${result ?: "null"}")
+                        result
                     }
 
                     targets.contains("webview") -> {
-                        bridge.findClass {
+                        val result = bridge.findClass {
                             matcher {
                                 usingStrings("V5Widget:TimeTableRender")
                             }
                         }.firstOrNull()?.name
+                        lsp("DexKit webview result: ${result ?: "null"}")
+                        result
                     }
 
                     else -> null
                 }
             } finally {
                 bridge.close()
+                lsp("DexKit closed: targets=$targets")
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "DexKit lookup failed", e)
+            lsp("DexKit lookup failed: ${e.message}")
+            XposedBridge.log(e)
             null
         }
     }

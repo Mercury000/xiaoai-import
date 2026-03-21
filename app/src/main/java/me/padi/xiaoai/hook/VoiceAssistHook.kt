@@ -4,10 +4,13 @@ import android.app.Application
 import android.content.Context
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import de.robv.android.xposed.XposedBridge
 import me.padi.xiaoai.HostCompat
 import top.sacz.xphelper.XpHelper
 
 object VoiceAssistHook : YukiBaseHooker() {
+    private const val TAG = "VoiceAssistHook"
+    private fun lsp(msg: String) = XposedBridge.log("[$TAG] $msg")
 
     override fun onHook() {
         Application::class.java.resolve().firstMethod {
@@ -18,6 +21,7 @@ object VoiceAssistHook : YukiBaseHooker() {
                 val context = instance<Context>()
                 val loader = context.classLoader
                 HostCompat.hostLoader = loader
+                lsp("Application.attach hooked, hostLoader saved")
 
                 val hostVersion = try {
                     context.packageManager.getPackageInfo(context.packageName, 0).versionName
@@ -25,6 +29,7 @@ object VoiceAssistHook : YukiBaseHooker() {
                     "unknown"
                 } ?: "unknown"
                 val sourceDir = context.applicationInfo.sourceDir
+                lsp("host=${context.packageName}, version=$hostVersion")
 
                 SmaliAnalyzer.getOrResolveClass(context, hostVersion, "token_class") {
                     SmaliAnalyzer.findTokenClass(sourceDir)
@@ -37,6 +42,7 @@ object VoiceAssistHook : YukiBaseHooker() {
                 val webViewClassName = SmaliAnalyzer.getOrResolveClass(context, hostVersion, "webview_helper_class") {
                     SmaliAnalyzer.findWebViewHelperClass(sourceDir)
                 }
+                lsp("webview helper class=${webViewClassName ?: "null"}")
 
                 "com.xiaomi.voiceassistant.web.container.AiWebActivity"
                     .toClass(loader).resolve()
@@ -78,6 +84,7 @@ object VoiceAssistHook : YukiBaseHooker() {
                                 }
                             }
                     } catch (_: Exception) {
+                        lsp("hook webview onCreate failed for class=$webViewClassName")
                     }
                 }
             }
