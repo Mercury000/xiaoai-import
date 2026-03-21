@@ -32,15 +32,15 @@ object VoiceAssistHook : YukiBaseHooker() {
                 lsp("host=${context.packageName}, version=$hostVersion")
 
                 SmaliAnalyzer.getOrResolveClass(context, hostVersion, "token_class") {
-                    SmaliAnalyzer.findTokenClass(sourceDir)
+                    SmaliAnalyzer.findTokenClass(context, sourceDir)
                 }
 
                 SmaliAnalyzer.getOrResolveClass(context, hostVersion, "device_class") {
-                    SmaliAnalyzer.findDeviceClass(sourceDir)
+                    SmaliAnalyzer.findDeviceClass(context, sourceDir)
                 }
 
                 val webViewClassName = SmaliAnalyzer.getOrResolveClass(context, hostVersion, "webview_helper_class") {
-                    SmaliAnalyzer.findWebViewHelperClass(sourceDir)
+                    SmaliAnalyzer.findWebViewHelperClass(context, sourceDir)
                 }
                 lsp("webview helper class=${webViewClassName ?: "null"}")
 

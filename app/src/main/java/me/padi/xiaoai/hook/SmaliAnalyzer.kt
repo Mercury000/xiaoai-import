@@ -1,12 +1,19 @@
 package me.padi.xiaoai.hook
 
 import android.content.Context
+import android.os.Build
 import de.robv.android.xposed.XposedBridge
+import me.padi.xiaoai.BuildConfig
 import org.luckypray.dexkit.DexKitBridge
+import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipFile
 
 object SmaliAnalyzer {
     private const val TAG = "SmaliAnalyzer"
     private const val PREFS_NAME = "hook_cache"
+    @Volatile
+    private var dexKitLoaded = false
     private fun lsp(msg: String) = XposedBridge.log("[$TAG] $msg")
 
     fun getOrResolveClass(
@@ -42,20 +49,54 @@ object SmaliAnalyzer {
         return resolvedName
     }
 
-    fun findTokenClass(sourceDir: String): String? {
-        return findClassByDexKit(sourceDir, listOf("token"))
+    fun findTokenClass(context: Context, sourceDir: String): String? {
+        return findClassByDexKit(context, sourceDir, listOf("token"))
     }
 
-    fun findDeviceClass(sourceDir: String): String? {
-        return findClassByDexKit(sourceDir, listOf("device"))
+    fun findDeviceClass(context: Context, sourceDir: String): String? {
+        return findClassByDexKit(context, sourceDir, listOf("device"))
     }
 
-    fun findWebViewHelperClass(sourceDir: String): String? {
-        return findClassByDexKit(sourceDir, listOf("webview"))
+    fun findWebViewHelperClass(context: Context, sourceDir: String): String? {
+        return findClassByDexKit(context, sourceDir, listOf("webview"))
     }
 
-    private fun findClassByDexKit(sourceDir: String, targets: List<String>): String? {
+    private fun ensureDexKitLoaded(context: Context) {
+        if (dexKitLoaded) return
+        synchronized(this) {
+            if (dexKitLoaded) return
+            val moduleContext = context.createPackageContext(BuildConfig.APPLICATION_ID, Context.CONTEXT_IGNORE_SECURITY)
+            val apkPath = moduleContext.applicationInfo.sourceDir
+            val extractedSo = File(context.codeCacheDir, "dexkit/libdexkit.so")
+            val parent = extractedSo.parentFile
+            if (parent == null || (!parent.exists() && !parent.mkdirs())) {
+                throw IllegalStateException("Unable to create host code cache dir: ${parent?.absolutePath}")
+            }
+
+            ZipFile(apkPath).use { zip ->
+                val soEntryName = Build.SUPPORTED_ABIS
+                    .asSequence()
+                    .map { abi -> "lib/$abi/libdexkit.so" }
+                    .firstOrNull { entryName -> zip.getEntry(entryName) != null }
+                    ?: throw UnsatisfiedLinkError("libdexkit.so not found in module apk for ABIs=${Build.SUPPORTED_ABIS.joinToString()}")
+
+                zip.getInputStream(zip.getEntry(soEntryName)).use { input ->
+                    FileOutputStream(extractedSo).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                lsp("DexKit so extracted: $soEntryName -> ${extractedSo.absolutePath}")
+            }
+
+            System.load(extractedSo.absolutePath)
+            dexKitLoaded = true
+            lsp("DexKit so loaded: ${extractedSo.absolutePath}")
+        }
+    }
+
+    private fun findClassByDexKit(context: Context, sourceDir: String, targets: List<String>): String? {
         return try {
+            ensureDexKitLoaded(context)
             lsp("DexKit open: targets=$targets")
             val bridge = DexKitBridge.create(sourceDir)
             try {
