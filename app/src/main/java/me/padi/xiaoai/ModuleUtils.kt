@@ -66,8 +66,34 @@ private fun extractYamlPair(line: String): Pair<String, String>? {
     // 引号内可能含 #（如 initial: "#"），必须先找闭合引号，不能直接 stripComment
     val value: String = if (valuePart.startsWith("\"") || valuePart.startsWith("'")) {
         val q = valuePart[0]
-        val closing = valuePart.indexOf(q, 1)
-        if (closing > 0) valuePart.substring(1, closing) else valuePart.drop(1)
+        val sb = StringBuilder()
+        var i = 1
+        var escaped = false
+        while (i < valuePart.length) {
+            val ch = valuePart[i]
+            if (escaped) {
+                sb.append(
+                    when (ch) {
+                        'n' -> '\n'
+                        'r' -> '\r'
+                        't' -> '\t'
+                        '\\' -> '\\'
+                        '"' -> '"'
+                        '\'' -> '\''
+                        else -> ch
+                    }
+                )
+                escaped = false
+            } else if (ch == '\\') {
+                escaped = true
+            } else if (ch == q) {
+                break
+            } else {
+                sb.append(ch)
+            }
+            i++
+        }
+        sb.toString()
     } else {
         val hashIdx = valuePart.indexOf('#')
         if (hashIdx >= 0) valuePart.substring(0, hashIdx).trim() else valuePart
