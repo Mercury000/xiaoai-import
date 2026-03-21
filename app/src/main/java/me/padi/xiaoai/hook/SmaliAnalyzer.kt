@@ -10,7 +10,6 @@ object SmaliAnalyzer {
 
     fun getOrResolveClass(
         context: Context,
-        hostPackage: String,
         hostVersion: String,
         key: String,
         resolver: (ClassLoader) -> String?
@@ -37,15 +36,15 @@ object SmaliAnalyzer {
         return resolvedName
     }
 
-    fun findTokenClass(loader: ClassLoader, sourceDir: String): String? {
+    fun findTokenClass(sourceDir: String): String? {
         return findClassByDexKit(sourceDir, listOf("token"))
     }
 
-    fun findDeviceClass(loader: ClassLoader, sourceDir: String): String? {
+    fun findDeviceClass(sourceDir: String): String? {
         return findClassByDexKit(sourceDir, listOf("device"))
     }
 
-    fun findWebViewHelperClass(loader: ClassLoader, sourceDir: String): String? {
+    fun findWebViewHelperClass(sourceDir: String): String? {
         return findClassByDexKit(sourceDir, listOf("webview"))
     }
 

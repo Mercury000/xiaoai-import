@@ -19,24 +19,23 @@ object VoiceAssistHook : YukiBaseHooker() {
                 val loader = context.classLoader
                 HostCompat.hostLoader = loader
 
-                val hostPackage = context.packageName
                 val hostVersion = try {
-                    context.packageManager.getPackageInfo(hostPackage, 0).versionName
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
                 } catch (e: Exception) {
                     "unknown"
                 } ?: "unknown"
                 val sourceDir = context.applicationInfo.sourceDir
 
-                SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "token_class") {
-                    SmaliAnalyzer.findTokenClass(it, sourceDir)
+                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "token_class") {
+                    SmaliAnalyzer.findTokenClass(sourceDir)
                 }
 
-                SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "device_class") {
-                    SmaliAnalyzer.findDeviceClass(it, sourceDir)
+                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "device_class") {
+                    SmaliAnalyzer.findDeviceClass(sourceDir)
                 }
 
-                val webViewClassName = SmaliAnalyzer.getOrResolveClass(context, hostPackage, hostVersion, "webview_helper_class") {
-                    SmaliAnalyzer.findWebViewHelperClass(it, sourceDir)
+                val webViewClassName = SmaliAnalyzer.getOrResolveClass(context, hostVersion, "webview_helper_class") {
+                    SmaliAnalyzer.findWebViewHelperClass(sourceDir)
                 }
 
                 "com.xiaomi.voiceassistant.web.container.AiWebActivity"

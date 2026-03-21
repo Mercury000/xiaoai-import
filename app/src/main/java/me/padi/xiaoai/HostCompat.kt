@@ -5,8 +5,6 @@ import android.content.Context
 fun Context.writablePrefs() = getSharedPreferences(packageName + "_preferences", Context.MODE_PRIVATE)
 
 object HostCompat {
-    const val HOST_PACKAGE = "com.miui.voiceassist"
-
     @JvmField
     var hostLoader: ClassLoader? = null
 
@@ -17,7 +15,9 @@ object HostCompat {
         return context?.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)?.getString(key, null)
     }
 
-    fun isLogin(): Boolean = true
+    fun isLogin(context: Context? = null): Boolean {
+        return !getAccessToken(context).isNullOrBlank()
+    }
 
     fun getAppId(): String = "326813440150602752"
 

@@ -49,7 +49,7 @@ class WebAppInterface(private val context: Context) {
 
     @JavascriptInterface
     fun navSchoolScreen() {
-        if (HostCompat.isLogin()) {
+        if (HostCompat.isLogin(context)) {
             val intent = Intent(context, ModuleScreen::class.java)
             val loader = context.classLoader
             val token = HostCompat.getAccessToken(context, loader)

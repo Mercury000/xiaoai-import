@@ -457,7 +457,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                     canGoBack = view.canGoBack()
                                     lastLoadedUrl = url
                                     Log.d("WebViewScreen", "onPageStarted: $url")
-                                    val isTransientUrl = url == "about:blank" || url == null
+                                    val isTransientUrl = url == "about:blank"
                                     if (currentImportState is ImportState.Loading && !isTransientUrl) {
                                         importState = ImportState.Idle
                                     }
@@ -550,9 +550,6 @@ private fun WebViewScreenContent(intent: Intent) {
                                 // 增强加载与兼容性设置
                                 allowFileAccess = true
                                 allowContentAccess = true
-                                setAllowFileAccessFromFileURLs(true)
-                                setAllowUniversalAccessFromFileURLs(true)
-                                databaseEnabled = true
                                 domStorageEnabled = true
                                 setGeolocationEnabled(true)
                                 javaScriptCanOpenWindowsAutomatically = true

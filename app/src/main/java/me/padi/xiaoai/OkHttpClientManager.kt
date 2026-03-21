@@ -5,7 +5,7 @@ import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -36,10 +36,7 @@ object OkHttpClientManager {
 
     // POST 请求（JSON格式）
     fun post(url: String, json: String, callback: Callback) {
-        val body = RequestBody.Companion.create(
-            "application/json; charset=utf-8".toMediaTypeOrNull(),
-            json
-        )
+        val body = json.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
 
         val request = Request.Builder()
             .url(url)

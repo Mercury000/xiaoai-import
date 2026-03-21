@@ -411,7 +411,7 @@ class JwSystemScreen : BaseActivity() {
                 WaitDialog.show("加载适配脚本...")
                 OkHttpClientManager.get(jsUrl, onSuccess = { resp ->
                     WaitDialog.dismiss()
-                    val jsStr = resp.body?.string() ?: ""
+                    val jsStr = resp.body.string()
                     launchImportActivity(context, item.url, item.name, "请登录后点击一键导入", jsStr)
                 }, onError = { e ->
                     WaitDialog.dismiss()
@@ -429,7 +429,7 @@ class JwSystemScreen : BaseActivity() {
         WaitDialog.show("加载适配器列表...")
         OkHttpClientManager.get(adaptersUrl, onSuccess = { resp ->
             WaitDialog.dismiss()
-            val yamlContent = resp.body?.string() ?: ""
+            val yamlContent = resp.body.string()
             val adapters = parseYamlList(yamlContent).filter { it.containsKey("adapter_id") && it.containsKey("adapter_name") }
             
             if (adapters.isEmpty()) {
@@ -460,7 +460,7 @@ class JwSystemScreen : BaseActivity() {
         WaitDialog.show("脚本下载中...")
         OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
             WaitDialog.dismiss()
-            val jsStr = resp.body?.string() ?: ""
+            val jsStr = resp.body.string()
             launchImportActivity(context, url, name, desc.replace("\\n", "\n"), jsStr)
         }, onError = { e ->
             WaitDialog.dismiss()
