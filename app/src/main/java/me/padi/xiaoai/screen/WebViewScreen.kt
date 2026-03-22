@@ -501,28 +501,8 @@ private fun WebViewScreenContent(intent: Intent) {
             override fun onSaveCourseConfig(configJson: String, callback: (Boolean, String?) -> Unit) {
                 coroutineScope.launch {
                     try {
-                        val appId = HostCompat.getAppId()
                         val normalizedConfig = normalizeShiguangCourseConfig(configJson)
                         HostCompat.pendingCourseConfigJson = normalizedConfig
-                        val ctid = HostCompat.importTargetTableId
-                        if (ctid != null) {
-                            val mergedConfig = try {
-                                val merged = JSONObject(normalizedConfig)
-                                val activePrefs = HostCompat.importSourceActiveSettingStr?.let { JSONObject(it) }
-                                val prefKeys = arrayOf("isWeekend", "morningNum", "afternoonNum", "nightNum", "speak")
-                                if (activePrefs != null) {
-                                    for (key in prefKeys) {
-                                        if (!merged.has(key) && activePrefs.has(key)) {
-                                            merged.put(key, activePrefs.get(key))
-                                        }
-                                    }
-                                }
-                                merged.toString()
-                            } catch (_: Exception) {
-                                normalizedConfig
-                            }
-                            CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", mergedConfig, null)
-                        }
                         callback(true, null)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -533,14 +513,8 @@ private fun WebViewScreenContent(intent: Intent) {
             override fun onSavePresetTimeSlots(timeSlotsJson: String, callback: (Boolean, String?) -> Unit) {
                 coroutineScope.launch {
                     try {
-                        val appId = HostCompat.getAppId()
                         val normalizedTimeSlots = normalizeShiguangTimeSlots(timeSlotsJson)
                         HostCompat.pendingTimeSlotSectionsJson = normalizedTimeSlots
-                        val ctid = HostCompat.importTargetTableId
-                        if (ctid != null) {
-                            val schedule = ScheduleConfig().apply { sections = normalizedTimeSlots }
-                            CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", null, schedule)
-                        }
                         callback(true, null)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -823,6 +797,10 @@ private fun WebViewScreenContent(intent: Intent) {
                                 importState = ImportState.Error("请输入课表名称")
                                 return@Button
                             }
+                            HostCompat.pendingCourseConfigJson = null
+                            HostCompat.pendingTimeSlotSectionsJson = null
+                            HostCompat.importTargetTableId = null
+                            HostCompat.importSourceActiveSettingStr = null
                             importState = ImportState.Loading("脚本启动中...")
                             Log.d("WebViewScreen", "开始点击解析, webViewRef is ${if(webViewRef == null) "NULL" else "NOT NULL"}")
                             
