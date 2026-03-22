@@ -23,6 +23,7 @@ object CourseRepository {
         courses: List<Course>,
         schedule: ScheduleConfig? = null
     ) = withContext(Dispatchers.IO) {
+        HostCompat.isImportFinished = false
         val loader = HostCompat.hostLoader ?: context.classLoader
         val deviceId = HostCompat.getDeviceId(context, loader)
             ?: throw Exception("无法获取设备 ID")
@@ -62,6 +63,7 @@ object CourseRepository {
         val ctid = runWithRetry { tok ->
             ApiClient.createTable(tableName.ifBlank { "提取课表" }, appId, tok, deviceId)
         }
+        HostCompat.importTargetTableId = ctid
 
         // 3. 切换表
         runWithRetry { tok ->
@@ -73,10 +75,28 @@ object CourseRepository {
             ApiClient.uploadCoursesAll(courses, ctid, appId, tok, deviceId)
         }
 
-        // 5. 如果有时间表，更新它
-        // 即使 JSON 没给时间表，我们也调用一次以同步“默认课表”的设置（按用户要求）
+        val pendingConfig = HostCompat.pendingCourseConfigJson
+        val pendingSections = HostCompat.pendingTimeSlotSectionsJson
+        val effectiveSchedule = if (pendingSections.isNullOrBlank()) {
+            schedule
+        } else {
+            (schedule ?: ScheduleConfig()).apply {
+                sections = pendingSections
+            }
+        }
+
+        // 5. 更新新建课表设置
         try {
-            updateTableSettings(context, appId, ctid, tableName, activeSettingStr, schedule)
+            updateTableSettings(
+                context,
+                appId,
+                ctid,
+                tableName,
+                pendingConfig ?: activeSettingStr,
+                effectiveSchedule
+            )
+            HostCompat.pendingCourseConfigJson = null
+            HostCompat.pendingTimeSlotSectionsJson = null
         } catch (e: Exception) {
             e.printStackTrace()
         }

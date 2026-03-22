@@ -11,6 +11,15 @@ object HostCompat {
     @Volatile
     var isImportFinished: Boolean = false
 
+    @Volatile
+    var importTargetTableId: Long? = null
+
+    @Volatile
+    var pendingCourseConfigJson: String? = null
+
+    @Volatile
+    var pendingTimeSlotSectionsJson: String? = null
+
     private fun getCachedClassName(context: Context?, key: String): String? {
         return context?.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)?.getString(key, null)
     }

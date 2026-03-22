@@ -502,9 +502,12 @@ private fun WebViewScreenContent(intent: Intent) {
                 coroutineScope.launch {
                     try {
                         val appId = HostCompat.getAppId()
-                        val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
                         val normalizedConfig = normalizeShiguangCourseConfig(configJson)
-                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", normalizedConfig, null)
+                        HostCompat.pendingCourseConfigJson = normalizedConfig
+                        val ctid = HostCompat.importTargetTableId
+                        if (ctid != null) {
+                            CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", normalizedConfig, null)
+                        }
                         callback(true, null)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -516,10 +519,13 @@ private fun WebViewScreenContent(intent: Intent) {
                 coroutineScope.launch {
                     try {
                         val appId = HostCompat.getAppId()
-                        val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
                         val normalizedTimeSlots = normalizeShiguangTimeSlots(timeSlotsJson)
-                        val schedule = ScheduleConfig().apply { sections = normalizedTimeSlots }
-                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", null, schedule)
+                        HostCompat.pendingTimeSlotSectionsJson = normalizedTimeSlots
+                        val ctid = HostCompat.importTargetTableId
+                        if (ctid != null) {
+                            val schedule = ScheduleConfig().apply { sections = normalizedTimeSlots }
+                            CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", null, schedule)
+                        }
                         callback(true, null)
                     } catch (e: Exception) {
                         e.printStackTrace()

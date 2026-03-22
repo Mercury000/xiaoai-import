@@ -604,28 +604,39 @@ public class ApiClient {
         JSONObject sourceObj = new JSONObject(sourceSettingStr == null || sourceSettingStr.isEmpty() ? "{}" : sourceSettingStr);
         JSONObject origObj = new JSONObject(originalSettingStr);
         JSONObject merged = new JSONObject();
+        boolean sourceLooksLikeTableSetting = sourceObj.has("id");
 
         if (origObj.has("id")) {
             merged.put("id", origObj.get("id"));
         }
 
-        Object sourceStart = findFirstSetting(sourceObj, "startSemester", "semesterStartDate", "startDate", "termStartDate");
+        Object sourceStart = sourceLooksLikeTableSetting
+                ? findFirstSetting(sourceObj, "semesterStartDate", "startDate", "termStartDate")
+                : findFirstSetting(sourceObj, "startSemester", "semesterStartDate", "startDate", "termStartDate");
         Long normalizedStartSemester = parseSemesterStartMillis(sourceStart);
         String startSemester = null;
         if (normalizedStartSemester != null) startSemester = String.valueOf(normalizedStartSemester);
         else if (origObj.has("startSemester")) startSemester = String.valueOf(origObj.opt("startSemester"));
         if (startSemester != null) merged.put("startSemester", startSemester);
 
-        Integer totalWeek = coerceInt(findFirstSetting(sourceObj, "totalWeek", "semesterTotalWeeks"));
+        Integer totalWeek = coerceInt(sourceLooksLikeTableSetting
+                ? findFirstSetting(sourceObj, "semesterTotalWeeks")
+                : findFirstSetting(sourceObj, "totalWeek", "semesterTotalWeeks"));
         if (totalWeek == null) totalWeek = coerceInt(origObj.opt("totalWeek"));
         if (totalWeek != null) merged.put("totalWeek", totalWeek);
 
-        Integer weekStart = coerceInt(findFirstSetting(sourceObj, "weekStart", "firstDayOfWeek"));
+        Integer weekStart = coerceInt(sourceLooksLikeTableSetting
+                ? findFirstSetting(sourceObj, "firstDayOfWeek")
+                : findFirstSetting(sourceObj, "weekStart", "firstDayOfWeek"));
         if (weekStart == null) weekStart = coerceInt(origObj.opt("weekStart"));
         if (weekStart != null) merged.put("weekStart", weekStart);
 
         Integer presentWeek = calculatePresentWeekFromStart(sourceStart, totalWeek);
-        if (presentWeek == null) presentWeek = coerceInt(findFirstSetting(sourceObj, "presentWeek", "currentWeek"));
+        if (presentWeek == null) {
+            presentWeek = coerceInt(sourceLooksLikeTableSetting
+                    ? findFirstSetting(sourceObj, "currentWeek")
+                    : findFirstSetting(sourceObj, "presentWeek", "currentWeek"));
+        }
         if (presentWeek == null) presentWeek = coerceInt(origObj.opt("presentWeek"));
         if (presentWeek != null) merged.put("presentWeek", presentWeek);
 
