@@ -96,7 +96,8 @@ object CourseRepository {
         ctId: Long,
         name: String,
         sourceSettingStr: String? = null,
-        customSchedule: ScheduleConfig? = null
+        customSchedule: ScheduleConfig? = null,
+        preferSourceTermFields: Boolean = false
     ) = withContext(Dispatchers.IO) {
         val loader = HostCompat.hostLoader ?: context.classLoader
         val deviceId = HostCompat.getDeviceId(context, loader)
@@ -130,6 +131,7 @@ object CourseRepository {
                 sourceSettingStr ?: "{}",
                 table.settingStr ?: "{}",
                 customSchedule,
+                preferSourceTermFields,
                 appId,
                 tok,
                 deviceId
@@ -157,6 +159,29 @@ object CourseRepository {
         runWithRetry { tok ->
             ApiClient.fetchTables(appId, tok, deviceId)
                 .firstOrNull { it.current == 1 }?.id
+        }
+    }
+
+    suspend fun getActiveTable(context: Context, appId: String): CourseTable? = withContext(Dispatchers.IO) {
+        val loader = HostCompat.hostLoader
+        val deviceId = HostCompat.getDeviceId(context, loader)
+            ?: return@withContext null
+
+        suspend fun <T> runWithRetry(block: suspend (String) -> T): T? {
+            val token = HostCompat.getAccessToken(context, loader)
+                ?: return null
+            return try {
+                block(token)
+            } catch (e: ApiClient.UnauthorizedException) {
+                val newToken = HostCompat.getAccessToken(context, loader, forceRefresh = true)
+                    ?: return null
+                block(newToken)
+            }
+        }
+
+        runWithRetry { tok ->
+            ApiClient.fetchTables(appId, tok, deviceId)
+                .firstOrNull { it.current == 1 }
         }
     }
 }

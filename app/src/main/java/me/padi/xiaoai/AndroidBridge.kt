@@ -169,9 +169,7 @@ class AndroidBridge(
     fun showSingleSelection(titleText: String, itemsJsonString: String, defaultSelectedIndex: Int): Int {
         Log.d(TAG, "JS 触发 showSingleSelection: $titleText")
         return try {
-            val items = mutableListOf<String>()
-            val jsonArray = JSONArray(itemsJsonString)
-            for (i in 0 until jsonArray.length()) items.add(jsonArray.getString(i))
+            val items = parseSelectionItems(itemsJsonString)
             val latch = CountDownLatch(1)
             val result = IntArray(1) { -1 }
             val data = SingleSelectionDialogData(titleText, items, defaultSelectedIndex)
@@ -196,22 +194,26 @@ class AndroidBridge(
     fun showSingleSelectionAsync(titleText: String, itemsJson: String, defaultIndex: Int, promiseId: String) {
         val latch = CountDownLatch(1)
         val result = IntArray(1) { -1 }
-        val items = mutableListOf<String>()
         try {
-            val arr = org.json.JSONArray(itemsJson)
-            for (i in 0 until arr.length()) items.add(arr.getString(i))
-        } catch (e: Exception) {}
-        val data = SingleSelectionDialogData(titleText, items, defaultIndex)
-        handler.post { 
-            callback.onShowSingleSelection(data, latch, result)
-            Thread(Runnable {
-                try {
-                    latch.await()
-                    resolveJsPromise(promiseId, result[0].toString())
-                } catch (e: Exception) {
-                    rejectJsPromise(promiseId, e.message)
-                }
-            }).start()
+            val items = parseSelectionItems(itemsJson)
+            val data = SingleSelectionDialogData(titleText, items, defaultIndex)
+            handler.post { 
+                callback.onShowSingleSelection(data, latch, result)
+                Thread(Runnable {
+                    try {
+                        latch.await()
+                        if (result[0] < 0) {
+                            resolveJsPromise(promiseId, "null")
+                        } else {
+                            resolveJsPromise(promiseId, result[0].toString())
+                        }
+                    } catch (e: Exception) {
+                        rejectJsPromise(promiseId, e.message)
+                    }
+                }).start()
+            }
+        } catch (e: Exception) {
+            rejectJsPromise(promiseId, e.message ?: "showSingleSelectionAsync parse error")
         }
     }
 
@@ -400,3 +402,23 @@ class AndroidBridge(
         }
     }
 }
+    private fun parseSelectionItems(itemsJsonString: String): List<String> {
+        val items = mutableListOf<String>()
+        val jsonArray = JSONArray(itemsJsonString)
+        for (i in 0 until jsonArray.length()) {
+            val item = jsonArray.opt(i)
+            when (item) {
+                is JSONObject -> {
+                    val text = item.optString("label")
+                        .ifBlank { item.optString("title") }
+                        .ifBlank { item.optString("text") }
+                        .ifBlank { item.optString("name") }
+                        .ifBlank { item.optString("value") }
+                    items.add(text.ifBlank { item.toString() })
+                }
+                null -> items.add("")
+                else -> items.add(item.toString())
+            }
+        }
+        return items
+    }

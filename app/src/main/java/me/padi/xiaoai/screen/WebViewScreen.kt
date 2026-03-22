@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -44,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import me.padi.xiaoai.ApiClient
@@ -136,7 +138,8 @@ private val BRIDGE_GLUE_JS = """
     window.app.savePresetTimeSlots = function(j){ return AndroidBridge.savePresetTimeSlots(sarg(j)); };
     window.app.postData = function(m){ return AndroidBridge.postData(sarg(m)); };
     window.app.reportError = function(e){ return AndroidBridge.reportError(sarg(e)); };
-    window.app.notifyTaskCompleted = function(){ AndroidBridge.notifyTaskCompleted(); };
+    window.app.notifyTaskCompleted = function(){ AndroidBridge.notifyTaskCompletion(); };
+    window.app.notifyTaskCompletion = function(){ AndroidBridge.notifyTaskCompletion(); };
     window.app.postHtml = function(h){ AndroidBridge.postHtml(sarg(h)); };
     window.app.closeWebView = function(){ AndroidBridge.onTaskCompleted(); };
     window.app.close = window.app.closeWebView;
@@ -151,7 +154,8 @@ private val BRIDGE_GLUE_JS = """
       saveImportedCourses:function(j){ return mkp(function(id){AndroidBridge.saveImportedCourses(sarg(j),id);});},
       saveCourseConfig:function(j){ return mkp(function(id){AndroidBridge.saveCourseConfig(sarg(j),id);});},
       savePresetTimeSlots:function(j){ return mkp(function(id){AndroidBridge.savePresetTimeSlots(sarg(j),id);});},
-      notifyTaskCompleted:function(){ AndroidBridge.notifyTaskCompleted(); }
+      notifyTaskCompleted:function(){ AndroidBridge.notifyTaskCompletion(); },
+      notifyTaskCompletion:function(){ AndroidBridge.notifyTaskCompletion(); }
     };
 
     console.log('Bridge Glue: Injected successfully (Ultimate Hybrid Mode).');
@@ -162,6 +166,70 @@ private val BRIDGE_GLUE_JS = """
 private data class AlertPendingState(val data: AlertDialogData, val latch: CountDownLatch, val result: BooleanArray)
 private data class PromptPendingState(val data: PromptDialogData, val latch: CountDownLatch, val result: Array<String?>)
 private data class SelectionPendingState(val data: SingleSelectionDialogData, val latch: CountDownLatch, val result: IntArray)
+
+private fun normalizeShiguangCourseConfig(configJson: String): String {
+    return try {
+        val raw = JSONObject(configJson)
+        val src = raw.optJSONObject("courseConfig") ?: raw
+        val mapped = JSONObject(src.toString())
+
+        // 直接透传可能已经是小爱字段的数据
+        if (src.has("startSemester")) mapped.put("startSemester", src.get("startSemester"))
+        if (src.has("totalWeek")) mapped.put("totalWeek", src.get("totalWeek"))
+        if (src.has("weekStart")) mapped.put("weekStart", src.get("weekStart"))
+
+        // 拾光规范字段 -> 小爱字段
+        if (src.has("semesterStartDate")) mapped.put("startSemester", src.get("semesterStartDate"))
+        if (src.has("semesterTotalWeeks")) mapped.put("totalWeek", src.get("semesterTotalWeeks"))
+        if (src.has("firstDayOfWeek")) mapped.put("weekStart", src.get("firstDayOfWeek"))
+        if (src.has("startDate")) mapped.put("startSemester", src.get("startDate"))
+        if (src.has("termStartDate")) mapped.put("startSemester", src.get("termStartDate"))
+        if (src.has("currentWeek")) mapped.put("presentWeek", src.get("currentWeek"))
+
+        mapped.toString()
+    } catch (_: Exception) {
+        configJson
+    }
+}
+
+private fun normalizeShiguangTimeSlots(timeSlotsJson: String): String {
+    return try {
+        val src = JSONArray(timeSlotsJson)
+        val mapped = JSONArray()
+        for (i in 0 until src.length()) {
+            val node = src.optJSONObject(i) ?: continue
+            val number = when {
+                node.has("i") -> node.optInt("i", -1)
+                node.has("number") -> node.optInt("number", -1)
+                node.has("section") -> node.optInt("section", -1)
+                else -> -1
+            }
+            val start = when {
+                node.has("s") -> node.optString("s")
+                node.has("startTime") -> node.optString("startTime")
+                node.has("start") -> node.optString("start")
+                else -> ""
+            }
+            val end = when {
+                node.has("e") -> node.optString("e")
+                node.has("endTime") -> node.optString("endTime")
+                node.has("end") -> node.optString("end")
+                else -> ""
+            }
+            if (number > 0 && start.isNotBlank() && end.isNotBlank()) {
+                mapped.put(
+                    JSONObject()
+                        .put("i", number)
+                        .put("s", start)
+                        .put("e", end)
+                )
+            }
+        }
+        if (mapped.length() > 0) mapped.toString() else timeSlotsJson
+    } catch (_: Exception) {
+        timeSlotsJson
+    }
+}
 
 class WebViewScreen : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -357,8 +425,11 @@ private fun WebViewScreenContent(intent: Intent) {
                 coroutineScope.launch {
                     try {
                         val appId = HostCompat.getAppId()
-                        val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
-                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", configJson, null)
+                        val activeTable = CourseRepository.getActiveTable(context, appId) ?: throw Exception("无活跃课表")
+                        val ctid = activeTable.id
+                        val tableName = activeTable.name.ifBlank { "提取课表" }
+                        val normalizedConfig = normalizeShiguangCourseConfig(configJson)
+                        CourseRepository.updateTableSettings(context, appId, ctid, tableName, normalizedConfig, null, preferSourceTermFields = true)
                         callback(true, null)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -370,9 +441,11 @@ private fun WebViewScreenContent(intent: Intent) {
                 coroutineScope.launch {
                     try {
                         val appId = HostCompat.getAppId()
-                        val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
-                        val schedule = ScheduleConfig().apply { sections = timeSlotsJson }
-                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", null, schedule)
+                        val activeTable = CourseRepository.getActiveTable(context, appId) ?: throw Exception("无活跃课表")
+                        val ctid = activeTable.id
+                        val tableName = activeTable.name.ifBlank { "提取课表" }
+                        val schedule = ScheduleConfig().apply { sections = normalizeShiguangTimeSlots(timeSlotsJson) }
+                        CourseRepository.updateTableSettings(context, appId, ctid, tableName, null, schedule)
                         callback(true, null)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -797,7 +870,12 @@ private fun WebViewScreenContent(intent: Intent) {
     val alert = alertStateRef.value
     if (alert != null) {
         Dialog(onDismissRequest = {}) {
-            Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(alert.data.title, fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -822,7 +900,11 @@ private fun WebViewScreenContent(intent: Intent) {
     val prompt = promptStateRef.value
     if (prompt != null) {
         Dialog(onDismissRequest = {}) {
-            Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(prompt.data.title, fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(4.dp))
@@ -861,43 +943,82 @@ private fun WebViewScreenContent(intent: Intent) {
         }
     }
 
-    // 单选列表弹窗
-    val selection = selectionStateRef.value
+    // 单选列表弹窗    val selection = selectionStateRef.value
     if (selection != null) {
+        val initialIndex = if (selection.data.defaultSelectedIndex in selection.data.items.indices) {
+            selection.data.defaultSelectedIndex
+        } else {
+            -1
+        }
+        var selectedIndex by remember(selection) { mutableStateOf(initialIndex) }
         Dialog(onDismissRequest = {
             selectionStateRef.value = null
             selection.result[0] = -1
             selection.latch.countDown()
         }) {
-            Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) {
-                    Text(selection.data.title, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 16.dp))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                        itemsIndexed(selection.data.items) { index, item ->
-                            Text(
-                                text = item,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectionStateRef.value = null
-                                        selection.result[0] = index
-                                        selection.latch.countDown()
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 8.dp)) {
+                        Text(selection.data.title, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 320.dp)
+                        ) {
+                            itemsIndexed(selection.data.items) { index, item ->
+                                val isSelected = index == selectedIndex
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            if (isSelected) MiuixTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                            else Color.Transparent
+                                        )
+                                        .clickable { selectedIndex = index }
+                                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = item, modifier = Modifier.weight(1f))
+                                    if (isSelected) {
+                                        Text(
+                                            text = "已选",
+                                            fontSize = 12.sp,
+                                            color = MiuixTheme.colorScheme.primary
+                                        )
                                     }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                            )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                            Button(
+                                onClick = {
+                                    selectionStateRef.value = null
+                                    selection.result[0] = -1
+                                    selection.latch.countDown()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("取消") }
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Button(
+                                onClick = {
+                                    selectionStateRef.value = null
+                                    selection.result[0] = selectedIndex
+                                    selection.latch.countDown()
+                                },
+                                enabled = selectedIndex >= 0,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColorsPrimary()
+                            ) { Text("确定", color = MiuixTheme.colorScheme.onPrimary) }
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Button(
-                        onClick = {
-                            selectionStateRef.value = null
-                            selection.result[0] = -1
-                            selection.latch.countDown()
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    ) { Text("取消") }
                 }
+            }
             }
         }
     }
