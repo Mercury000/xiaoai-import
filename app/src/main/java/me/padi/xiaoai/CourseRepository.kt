@@ -3,11 +3,33 @@ package me.padi.xiaoai
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /**
  * 课表导入编排仓库
  */
 object CourseRepository {
+    private fun mergeScriptConfigWithActivePrefs(
+        scriptConfig: String?,
+        activeSettingStr: String?
+    ): String? {
+        if (scriptConfig.isNullOrBlank()) return activeSettingStr
+        if (activeSettingStr.isNullOrBlank()) return scriptConfig
+
+        return try {
+            val merged = JSONObject(scriptConfig)
+            val active = JSONObject(activeSettingStr)
+            val prefKeys = arrayOf("isWeekend", "morningNum", "afternoonNum", "nightNum", "speak")
+            for (key in prefKeys) {
+                if (!merged.has(key) && active.has(key)) {
+                    merged.put(key, active.get(key))
+                }
+            }
+            merged.toString()
+        } catch (_: Exception) {
+            scriptConfig
+        }
+    }
 
     /**
      * 执行完整的课表导入流程：
@@ -54,6 +76,7 @@ object CourseRepository {
                     ApiClient.fetchTableDetail(activeTable, appId, tok, deviceId)
                 }
                 activeSettingStr = activeTable.settingStr
+                HostCompat.importSourceActiveSettingStr = activeSettingStr
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -75,7 +98,10 @@ object CourseRepository {
             ApiClient.uploadCoursesAll(courses, ctid, appId, tok, deviceId)
         }
 
-        val pendingConfig = HostCompat.pendingCourseConfigJson
+        val pendingConfig = mergeScriptConfigWithActivePrefs(
+            HostCompat.pendingCourseConfigJson,
+            activeSettingStr
+        )
         val pendingSections = HostCompat.pendingTimeSlotSectionsJson
         val effectiveSchedule = if (pendingSections.isNullOrBlank()) {
             schedule

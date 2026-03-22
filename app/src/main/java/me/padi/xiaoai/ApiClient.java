@@ -7,6 +7,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -78,6 +80,21 @@ public class ApiClient {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private static int firstNumber(String csv, int fallback) {
+        if (csv == null) return fallback;
+        try {
+            String[] parts = csv.split(",");
+            for (String part : parts) {
+                String text = part.trim();
+                if (!text.isEmpty()) {
+                    return Integer.parseInt(text);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return fallback;
     }
 
     private static Long parseSemesterStartMillis(Object value) {
@@ -389,8 +406,34 @@ public class ApiClient {
 
     public static void uploadCoursesAll(List<Course> courses, long ctId, String appId,
                                         String serviceToken, String deviceId) throws Exception {
+        List<Course> sortedCourses = new ArrayList<>(courses);
+        Collections.sort(sortedCourses, new Comparator<Course>() {
+            @Override
+            public int compare(Course a, Course b) {
+                int byDay = Integer.compare(a.day, b.day);
+                if (byDay != 0) return byDay;
+
+                int bySection = Integer.compare(
+                        firstNumber(a.sections, Integer.MAX_VALUE),
+                        firstNumber(b.sections, Integer.MAX_VALUE)
+                );
+                if (bySection != 0) return bySection;
+
+                int byWeek = Integer.compare(
+                        firstNumber(a.weeks, Integer.MAX_VALUE),
+                        firstNumber(b.weeks, Integer.MAX_VALUE)
+                );
+                if (byWeek != 0) return byWeek;
+
+                int bySectionsText = String.valueOf(a.sections).compareTo(String.valueOf(b.sections));
+                if (bySectionsText != 0) return bySectionsText;
+
+                return String.valueOf(a.weeks).compareTo(String.valueOf(b.weeks));
+            }
+        });
+
         JSONArray courseArray = new JSONArray();
-        for (Course course : courses) {
+        for (Course course : sortedCourses) {
             String styleStr = course.style != null ? course.style : COLOR_PRESETS[0];
             JSONObject courseObj = new JSONObject()
                     .put("name", course.name)

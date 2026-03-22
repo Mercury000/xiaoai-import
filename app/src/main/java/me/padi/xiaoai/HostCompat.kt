@@ -20,6 +20,9 @@ object HostCompat {
     @Volatile
     var pendingTimeSlotSectionsJson: String? = null
 
+    @Volatile
+    var importSourceActiveSettingStr: String? = null
+
     private fun getCachedClassName(context: Context?, key: String): String? {
         return context?.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)?.getString(key, null)
     }
