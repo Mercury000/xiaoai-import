@@ -60,6 +60,8 @@ import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.ParseResult
 import me.padi.xiaoai.CourseRepository
 import me.padi.xiaoai.R
+import me.padi.xiaoai.ShiguangAdapterEntry
+import me.padi.xiaoai.parseShiguangSchoolIndexPb
 import org.json.JSONArray
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
@@ -89,7 +91,8 @@ data class SchoolData(
     val url: String,
     val importType: String,
     val sortKey: String,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val adapters: List<ShiguangAdapterEntry> = emptyList()
 )
 
 enum class SchoolImportType {
@@ -103,7 +106,7 @@ class SchoolScreen : BaseActivity() {
 
     companion object {
         private const val PREF_NAME = "shiguang_cache"
-        private const val CACHE_KEY_YAML = "root_index_yaml"
+        private const val CACHE_KEY_PB = "school_index_pb_base64"
         private const val CACHE_KEY_TS   = "root_index_ts"
         private const val CACHE_KEY_SOURCE = "root_index_source"
         /** 缓存有效期 6 小时；强制刷新时忽略 */
@@ -140,11 +143,11 @@ class SchoolScreen : BaseActivity() {
         // 2. 非强制刷新时尝试从缓存恢复
         if (!forceRefresh) {
             val cached = if (prefs.getString(CACHE_KEY_SOURCE, null) == sourceKey) {
-                prefs.getString(CACHE_KEY_YAML, null)
+                prefs.getString(CACHE_KEY_PB, null)
             } else null
             val ts     = prefs.getLong(CACHE_KEY_TS, 0L)
             if (!cached.isNullOrBlank()) {
-                parseAndPopulateList(cached)
+                parseAndPopulatePb(android.util.Base64.decode(cached, android.util.Base64.DEFAULT))
                 // 缓存仍新鲜 → 不发网络请求，直接返回
                 if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
                     return
@@ -154,17 +157,17 @@ class SchoolScreen : BaseActivity() {
 
         // 3. 拉取远程，更新缓存并刷新 UI
         isRefreshing = true
-        OkHttpClientManager.get(HostCompat.buildShiguangRawUrl(this, "index/root_index.yaml"), onSuccess = { response ->
+        OkHttpClientManager.get(HostCompat.buildShiguangRawUrl(this, "school_index.pb"), onSuccess = { response ->
             try {
-                val remoteContent = response.body.string()
-                if (remoteContent.isNotBlank()) {
+                val remoteBytes = response.body.bytes()
+                if (remoteBytes.isNotEmpty()) {
                     // 持久化到缓存
                     prefs.edit()
-                        .putString(CACHE_KEY_YAML, remoteContent)
+                        .putString(CACHE_KEY_PB, android.util.Base64.encodeToString(remoteBytes, android.util.Base64.NO_WRAP))
                         .putString(CACHE_KEY_SOURCE, sourceKey)
                         .putLong(CACHE_KEY_TS, System.currentTimeMillis())
                         .apply()
-                    runOnUiThread { parseAndPopulateList(remoteContent) }
+                    runOnUiThread { parseAndPopulatePb(remoteBytes) }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -231,6 +234,27 @@ class SchoolScreen : BaseActivity() {
                 // 先按 sortKey 再按 name 排序，保证 "#" 置顶分组内条目也有序
                 schoolList.addAll(newList.sortedWith(compareBy({ it.sortKey }, { it.name })))
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun parseAndPopulatePb(bytes: ByteArray) {
+        try {
+            val newList = parseShiguangSchoolIndexPb(bytes).map { school ->
+                val sortKey = if (school.name.contains("通用") || school.id == "GLOBAL_TOOLS") "#" else school.initial.ifBlank { "#" }
+                SchoolData(
+                    name = school.name,
+                    type = "拾光适配",
+                    url = school.resourceFolder,
+                    importType = "shiguang_official",
+                    sortKey = sortKey,
+                    isPinned = sortKey == "#",
+                    adapters = school.adapters
+                )
+            }
+            schoolList.clear()
+            schoolList.addAll(newList.sortedWith(compareBy<SchoolData> { it.sortKey }.thenBy { it.name }))
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -404,44 +428,27 @@ private fun SchoolListScreenContent(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
                                 if (school.importType == "shiguang_official") {
                                     val folder = school.url // 我们之前把 resource_folder 存到了 url
-                                    val adaptersUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/adapters.yaml")
-                                    
-                                        WaitDialog.show("加载适配器...")
-                                        OkHttpClientManager.get(adaptersUrl, { resp ->
-                                            WaitDialog.dismiss()
-                                            val yamlContent = resp.body.string()
-                                            val adapters: List<Map<String, String>> = parseYamlList(yamlContent).filter { it.containsKey("adapter_id") && it.containsKey("adapter_name") }
-                                        
-                                        if (adapters.isEmpty()) {
-                                            TipDialog.show("暂无适配脚本")
-                                            return@get
-                                        }
+                                    val adapters = school.adapters
+                                    if (adapters.isEmpty()) {
+                                        TipDialog.show("暂无适配脚本")
+                                        return@clickable
+                                    }
 
-                        (context as SchoolScreen).runOnUiThread {
-                                            // 无论适配器数量，总使用 BottomMenu 展示，让用户看到贡献者
-                                            val subNames: Array<String> = adapters.map {
-                                                val adapterName = it["adapter_name"] ?: "Unknown"
-                                                val maintainer = it["maintainer"]
-                                                if (!maintainer.isNullOrBlank()) "$adapterName  (贡献者：$maintainer)" else adapterName
-                                            }.toTypedArray()
-                                            val menuTitle = if (adapters.size == 1) school.name else school.name
-                                            val menuMsg = if (adapters.size == 1) "点击开始导入" else "选择导入方式"
-                                            BottomMenu.show(subNames).setTitle(menuTitle).setMessage(menuMsg)
-                                                .setOnMenuItemClickListener { _, _, subIndex ->
-                                                    val a = adapters[subIndex]
-                                                    val desc = buildString {
-                                                        append(a["description"] ?: "")
-                                                        val maintainer = a["maintainer"]
-                                                        if (!maintainer.isNullOrBlank()) append("\\n\\n贡献者：$maintainer")
-                                                    }
-                                                    startOfficialJsImport(context, folder, a["adapter_name"] ?: "", a["asset_js_path"] ?: "", a["import_url"] ?: "", desc)
-                                                    false
+                                    (context as SchoolScreen).runOnUiThread {
+                                        val subNames: Array<String> = adapters.map {
+                                            if (it.maintainer.isNotBlank()) "${it.adapterName}  (贡献者：${it.maintainer})" else it.adapterName
+                                        }.toTypedArray()
+                                        BottomMenu.show(subNames).setTitle(school.name).setMessage(if (adapters.size == 1) "点击开始导入" else "选择导入方式")
+                                            .setOnMenuItemClickListener { _, _, subIndex ->
+                                                val a = adapters[subIndex]
+                                                val desc = buildString {
+                                                    append(a.description)
+                                                    if (a.maintainer.isNotBlank()) append("\\n\\n贡献者：${a.maintainer}")
                                                 }
-                                        }
-                                    }, onError = { e ->
-                                        WaitDialog.dismiss()
-                                        TipDialog.show("列表下载失败: ${e.message}")
-                                    })
+                                                startOfficialJsImport(context, folder, a.adapterName, a.assetJsPath, a.importUrl, desc)
+                                                false
+                                            }
+                                    }
                                 } else {
                                     selectedSchool = school
                                     url = school.url

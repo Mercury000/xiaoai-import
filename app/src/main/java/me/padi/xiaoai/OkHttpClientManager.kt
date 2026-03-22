@@ -66,6 +66,23 @@ object OkHttpClientManager {
             }
         })
     }
+
+    suspend fun getBytesSync(url: String): ByteArray = suspendCancellableCoroutine { continuation ->
+        get(url, object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body.bytes()
+                    continuation.resume(body)
+                } catch (e: Exception) {
+                    continuation.resumeWithException(e)
+                }
+            }
+        })
+    }
 }
 
 inline fun OkHttpClientManager.get(

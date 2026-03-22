@@ -27,9 +27,10 @@ import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.OkHttpClientManager
+import me.padi.xiaoai.ShiguangAdapterEntry
 import me.padi.xiaoai.get
-import me.padi.xiaoai.parseYamlList
 import me.padi.xiaoai.launchImportActivity
+import me.padi.xiaoai.parseShiguangSchoolIndexPb
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -48,7 +49,8 @@ data class JwItem(
     val url: String = "",
     val extra: String = "", // id for SCHOOL/COMMON, resource_folder for SHIGUANG
     val isCommon: Boolean = false,
-    val sortKey: String = "#"
+    val sortKey: String = "#",
+    val adapters: List<ShiguangAdapterEntry> = emptyList()
 )
 
 class JwSystemScreen : BaseActivity() {
@@ -56,7 +58,7 @@ class JwSystemScreen : BaseActivity() {
     private var isLoading by mutableStateOf(false)
     // 适配器选择面板状态
     private var showAdaptersSheet by mutableStateOf(false)
-    private val sheetAdapters = mutableStateListOf<Map<String, String>>()
+    private val sheetAdapters = mutableStateListOf<ShiguangAdapterEntry>()
     private var sheetFolder by mutableStateOf("")
     private var sheetCategory by mutableStateOf("")
 
@@ -64,7 +66,7 @@ class JwSystemScreen : BaseActivity() {
         private const val PREF_NAME    = "jw_cache"
         private const val KEY_COMMON   = "cache_common"
         private const val KEY_SCHOOLS  = "cache_schools"
-        private const val KEY_SHIGUANG = "cache_shiguang"
+        private const val KEY_SHIGUANG = "cache_shiguang_pb_base64"
         private const val KEY_SHIGUANG_SOURCE = "cache_shiguang_source"
         private const val URL_COMMON   = "https://gitee.com/padi/aishedule/raw/master/system.json"
         private const val URL_SCHOOLS  = "https://gitee.com/padi/aishedule/raw/master/school.json"
@@ -143,8 +145,8 @@ class JwSystemScreen : BaseActivity() {
                                             }
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                            Text(adapter["adapter_name"] ?: "Unknown", fontSize = 16.sp)
-                                            val maintainer = adapter["maintainer"]
+                                            Text(adapter.adapterName.ifBlank { "Unknown" }, fontSize = 16.sp)
+                                            val maintainer = adapter.maintainer
                                             if (!maintainer.isNullOrBlank()) {
                                                 Text(
                                                     text = "贡献者：$maintainer",
@@ -152,7 +154,7 @@ class JwSystemScreen : BaseActivity() {
                                                     color = MiuixTheme.colorScheme.primary
                                                 )
                                             }
-                                            val desc = adapter["description"]
+                                            val desc = adapter.description
                                             if (!desc.isNullOrBlank()) {
                                                 Text(
                                                     text = desc.replace("\\n", "\n"),
@@ -278,26 +280,25 @@ class JwSystemScreen : BaseActivity() {
             val raw = if (!forceRefresh && prefs.getString(KEY_SHIGUANG_SOURCE, null) == sourceKey) {
                 prefs.getString(KEY_SHIGUANG, null)
             } else null
-            val yaml = if (!raw.isNullOrBlank()) raw else {
-                val fetched = OkHttpClientManager.getSync(HostCompat.buildShiguangRawUrl(this, "index/root_index.yaml"))
+            val bytes = if (!raw.isNullOrBlank()) {
+                android.util.Base64.decode(raw, android.util.Base64.DEFAULT)
+            } else {
+                val fetched = OkHttpClientManager.getBytesSync(HostCompat.buildShiguangRawUrl(this, "school_index.pb"))
                 prefs.edit()
-                    .putString(KEY_SHIGUANG, fetched)
+                    .putString(KEY_SHIGUANG, android.util.Base64.encodeToString(fetched, android.util.Base64.NO_WRAP))
                     .putString(KEY_SHIGUANG_SOURCE, sourceKey)
                     .apply()
                 fetched
             }
-            parseYamlList(yaml).mapNotNull { map ->
-                val name   = map["name"]   ?: return@mapNotNull null
-                val folder = map["resource_folder"] ?: return@mapNotNull null
-                val id     = map["id"] ?: ""
-                // 名称含"通用"或 id==GLOBAL_TOOLS → 归为通用/置顶
-                val isCommon = name.contains("通用") || id == "GLOBAL_TOOLS"
+            parseShiguangSchoolIndexPb(bytes).map { school ->
+                val isCommon = school.name.contains("通用") || school.id == "GLOBAL_TOOLS"
                 JwItem(
-                    name  = name,
+                    name  = school.name,
                     type  = JwType.SHIGUANG,
-                    extra = folder,
+                    extra = school.resourceFolder,
                     isCommon = isCommon,
-                    sortKey = if (isCommon) "#" else (map["initial"] ?: "#")
+                    sortKey = if (isCommon) "#" else school.initial.ifBlank { "#" },
+                    adapters = school.adapters
                 )
             }
         } catch (e: Exception) {
@@ -426,49 +427,26 @@ class JwSystemScreen : BaseActivity() {
                 })
             }
             JwType.SHIGUANG -> {
-                fetchShiguangAdapters(context, item.extra, item.name)
+                if (item.adapters.isEmpty()) {
+                    TipDialog.show("未找到有效的适配脚本")
+                } else {
+                    sheetAdapters.clear()
+                    sheetAdapters.addAll(item.adapters)
+                    sheetFolder = item.extra
+                    sheetCategory = item.name
+                    showAdaptersSheet = true
+                }
             }
         }
     }
 
-    private fun fetchShiguangAdapters(context: Context, folder: String, categoryName: String) {
-        val adaptersUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/adapters.yaml")
-        WaitDialog.show("加载适配器列表...")
-        OkHttpClientManager.get(adaptersUrl, onSuccess = { resp ->
-            WaitDialog.dismiss()
-            val yamlContent = resp.body.string()
-            val adapters = parseYamlList(yamlContent).filter { it.containsKey("adapter_id") && it.containsKey("adapter_name") }
-            
-            if (adapters.isEmpty()) {
-                TipDialog.show("未找到有效的适配脚本")
-                return@get
-            }
-
-            (context as Activity).runOnUiThread {
-                sheetAdapters.clear()
-                sheetAdapters.addAll(adapters)
-                sheetFolder = folder
-                sheetCategory = categoryName
-                showAdaptersSheet = true
-            }
-        }, onError = { e ->
-            WaitDialog.dismiss()
-            TipDialog.show("列表下载失败: ${e.message}")
-        })
-    }
-
-    private fun launchShiguangAdapter(context: Context, folder: String, adapterMap: Map<String, String>) {
-        val name = adapterMap["adapter_name"] ?: ""
-        val jsPath = adapterMap["asset_js_path"] ?: ""
-        val url = adapterMap["import_url"] ?: ""
-        val desc = adapterMap["description"] ?: ""
-        
-        val scriptUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/$jsPath")
+    private fun launchShiguangAdapter(context: Context, folder: String, adapter: ShiguangAdapterEntry) {
+        val scriptUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/${adapter.assetJsPath}")
         WaitDialog.show("脚本下载中...")
         OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
             WaitDialog.dismiss()
             val jsStr = resp.body.string()
-            launchImportActivity(context, url, name, desc.replace("\\n", "\n"), jsStr)
+            launchImportActivity(context, adapter.importUrl, adapter.adapterName, adapter.description.replace("\\n", "\n"), jsStr)
         }, onError = { e ->
             WaitDialog.dismiss()
             TipDialog.show("脚本下载失败: ${e.message}")

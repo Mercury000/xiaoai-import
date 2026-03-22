@@ -76,7 +76,7 @@ class ModuleScreen : BaseActivity() {
                     mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_url", "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse") ?: "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse")
                 }
                 var shiguangRepoBranch by remember {
-                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "main") ?: "main")
+                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "index-pb-release") ?: "index-pb-release")
                 }
                 val context = LocalContext.current
                 Scaffold { paddingValues ->
@@ -161,7 +161,7 @@ class ModuleScreen : BaseActivity() {
                                         text = "重置",
                                         onClick = {
                                             shiguangRepoUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"
-                                            shiguangRepoBranch = "main"
+                                            shiguangRepoBranch = "index-pb-release"
                                         }
                                     )
                                     Spacer(Modifier.width(16.dp))

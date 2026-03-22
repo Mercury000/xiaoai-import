@@ -8,7 +8,7 @@ object HostCompat {
     private const val PREF_KEY_SHIGUANG_REPO_URL = "debug_shiguang_repo_url"
     private const val PREF_KEY_SHIGUANG_REPO_BRANCH = "debug_shiguang_repo_branch"
     private const val DEFAULT_SHIGUANG_REPO_URL = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"
-    private const val DEFAULT_SHIGUANG_REPO_BRANCH = "main"
+    private const val DEFAULT_SHIGUANG_REPO_BRANCH = "index-pb-release"
 
     @JvmField
     var hostLoader: ClassLoader? = null
