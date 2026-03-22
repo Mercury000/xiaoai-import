@@ -70,7 +70,7 @@ class ModuleScreen : BaseActivity() {
                 var showBottomSheet = remember { mutableStateOf(false) }
 
                 var url by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_url", "")) }
-                var javaScriptStr by remember { mutableStateOf("") }
+                var javaScriptStr by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_script", "")) }
                 val context = LocalContext.current
                 Scaffold { paddingValues ->
                     LazyColumn(
@@ -109,11 +109,16 @@ class ModuleScreen : BaseActivity() {
                                     Spacer(Modifier.width(16.dp))
                                     Button(
                                         modifier = Modifier.weight(1f), onClick = {
-                                            context.writablePrefs().edit().putString("model_name", url).apply()
+                                            context.writablePrefs().edit()
+                                                .putString("debug_jw_url", url)
+                                                .putString("debug_jw_script", javaScriptStr)
+                                                .apply()
                                             dismiss?.invoke()
                                             (context as Activity).finish()
                                             val intent = Intent(context, WebViewScreen::class.java).apply {
                                                 putExtra("url", url)
+                                                putExtra("script", javaScriptStr)
+                                                putExtra("title", "JavaScript注入")
                                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                             }
                                             context.startActivity(intent)
