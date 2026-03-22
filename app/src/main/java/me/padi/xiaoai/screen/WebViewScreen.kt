@@ -871,24 +871,26 @@ private fun WebViewScreenContent(intent: Intent) {
     if (alert != null) {
         Dialog(onDismissRequest = {}) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(alert.data.title, fontSize = 16.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(alert.data.content, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Spacer(modifier = Modifier.weight(1f))
-                        Button(onClick = {
-                            alertStateRef.value = null
-                            alert.result[0] = true
-                            alert.latch.countDown()
-                        }) {
-                            Text(alert.data.confirmText.ifBlank { "确定" })
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .shadow(16.dp, RoundedCornerShape(20.dp))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text(alert.data.title, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(alert.data.content, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Spacer(modifier = Modifier.weight(1f))
+                            Button(onClick = {
+                                alertStateRef.value = null
+                                alert.result[0] = true
+                                alert.latch.countDown()
+                            }) {
+                                Text(alert.data.confirmText.ifBlank { "确定" })
+                            }
                         }
                     }
                 }
@@ -896,54 +898,56 @@ private fun WebViewScreenContent(intent: Intent) {
         }
     }
 
-    // Prompt 输入弹窗
     val prompt = promptStateRef.value
     if (prompt != null) {
         Dialog(onDismissRequest = {}) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(prompt.data.title, fontSize = 16.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    if (prompt.data.tip.isNotBlank()) {
-                        Text(prompt.data.tip, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface)
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                    TextField(
-                        value = promptInputRef.value,
-                        onValueChange = { promptInputRef.value = it },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = {
-                                promptStateRef.value = null
-                                prompt.result[0] = null
-                                prompt.latch.countDown()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("取消") }
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Button(
-                            onClick = {
-                                val input = promptInputRef.value
-                                promptStateRef.value = null
-                                prompt.result[0] = input
-                                prompt.latch.countDown()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("确定") }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .shadow(16.dp, RoundedCornerShape(20.dp))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text(prompt.data.title, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        if (prompt.data.tip.isNotBlank()) {
+                            Text(prompt.data.tip, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        TextField(
+                            value = promptInputRef.value,
+                            onValueChange = { promptInputRef.value = it },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Button(
+                                onClick = {
+                                    promptStateRef.value = null
+                                    prompt.result[0] = null
+                                    prompt.latch.countDown()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("取消") }
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Button(
+                                onClick = {
+                                    val input = promptInputRef.value
+                                    promptStateRef.value = null
+                                    prompt.result[0] = input
+                                    prompt.latch.countDown()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("确定") }
+                        }
                     }
                 }
             }
         }
     }
 
-    // 单选列表弹窗    val selection = selectionStateRef.value
+    val selection = selectionStateRef.value
     if (selection != null) {
         val initialIndex = if (selection.data.defaultSelectedIndex in selection.data.items.indices) {
             selection.data.defaultSelectedIndex
@@ -961,6 +965,7 @@ private fun WebViewScreenContent(intent: Intent) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
+                        .shadow(16.dp, RoundedCornerShape(20.dp))
                 ) {
                     Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 8.dp)) {
                         Text(selection.data.title, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 12.dp))
@@ -1018,7 +1023,6 @@ private fun WebViewScreenContent(intent: Intent) {
                         }
                     }
                 }
-            }
             }
         }
     }
