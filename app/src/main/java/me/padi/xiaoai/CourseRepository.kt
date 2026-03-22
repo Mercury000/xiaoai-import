@@ -96,8 +96,7 @@ object CourseRepository {
         ctId: Long,
         name: String,
         sourceSettingStr: String? = null,
-        customSchedule: ScheduleConfig? = null,
-        preferSourceTermFields: Boolean = false
+        customSchedule: ScheduleConfig? = null
     ) = withContext(Dispatchers.IO) {
         val loader = HostCompat.hostLoader ?: context.classLoader
         val deviceId = HostCompat.getDeviceId(context, loader)
@@ -131,7 +130,6 @@ object CourseRepository {
                 sourceSettingStr ?: "{}",
                 table.settingStr ?: "{}",
                 customSchedule,
-                preferSourceTermFields,
                 appId,
                 tok,
                 deviceId

@@ -506,29 +506,15 @@ public class ApiClient {
         }
     }
 
-    public static void updateTableSettings(long ctId, String name, String sourceSettingStr, String originalSettingStr, ScheduleConfig customSchedule, boolean preferSourceTermFields, String appId, String serviceToken, String deviceId) throws Exception {
+    public static void updateTableSettings(long ctId, String name, String sourceSettingStr, String originalSettingStr, ScheduleConfig customSchedule, String appId, String serviceToken, String deviceId) throws Exception {
         // 两者均有值时才执行；否则没有足够数据构建合法 setting
-        if (originalSettingStr == null || originalSettingStr.isEmpty())
+        if (sourceSettingStr == null || sourceSettingStr.isEmpty() || originalSettingStr == null || originalSettingStr.isEmpty())
             return;
 
-        JSONObject sourceRoot = (sourceSettingStr == null || sourceSettingStr.isEmpty())
-                ? new JSONObject()
-                : new JSONObject(sourceSettingStr);
-        JSONObject sourceObj = sourceRoot.optJSONObject("courseConfig");
-        if (sourceObj == null) sourceObj = sourceRoot;
+        JSONObject sourceObj = new JSONObject(sourceSettingStr);
         JSONObject origObj = new JSONObject(originalSettingStr);
         // 从零构建 merged，仅放入明确需要的字段
-        JSONObject merged = new JSONObject(origObj.toString());
-        if (!sourceObj.has("startSemester") && sourceObj.has("semesterStartDate"))
-            sourceObj.put("startSemester", sourceObj.opt("semesterStartDate"));
-        if (!sourceObj.has("totalWeek") && sourceObj.has("semesterTotalWeeks"))
-            sourceObj.put("totalWeek", sourceObj.opt("semesterTotalWeeks"));
-        if (!sourceObj.has("weekStart") && sourceObj.has("firstDayOfWeek"))
-            sourceObj.put("weekStart", sourceObj.opt("firstDayOfWeek"));
-        if (!sourceObj.has("startSemester") && sourceObj.has("startDate"))
-            sourceObj.put("startSemester", sourceObj.opt("startDate"));
-        if (!sourceObj.has("startSemester") && sourceObj.has("termStartDate"))
-            sourceObj.put("startSemester", sourceObj.opt("termStartDate"));
+        JSONObject merged = new JSONObject();
 
         // 固定字段：从新建课表默认值取（保证 id/学期等为本次课表的正确值）
         if (origObj.has("id")) merged.put("id", origObj.get("id"));
@@ -539,31 +525,7 @@ public class ApiClient {
         // 用户习惯字段：从导入前活跃课表取（保留用户的周末/语音等偏好）
         String[] cloneKeys = {"isWeekend", "morningNum", "afternoonNum", "nightNum", "speak", "weekStart"};
         for (String k : cloneKeys) {
-            if (!sourceObj.has(k)) continue;
-            Object v = sourceObj.get(k);
-            if (v != null && !(v instanceof String && ((String) v).trim().isEmpty())) {
-                merged.put(k, v);
-            }
-        }
-        if (preferSourceTermFields) {
-            if (sourceObj.has("startSemester")) {
-                String normalizedStartSemester = normalizeStartSemester(sourceObj.opt("startSemester"));
-                if (normalizedStartSemester != null && !normalizedStartSemester.isEmpty()) {
-                    merged.put("startSemester", normalizedStartSemester);
-                }
-            }
-            if (sourceObj.has("totalWeek")) {
-                Object totalWeekVal = sourceObj.opt("totalWeek");
-                if (totalWeekVal != null && !(totalWeekVal instanceof String && ((String) totalWeekVal).trim().isEmpty())) {
-                    merged.put("totalWeek", totalWeekVal);
-                }
-            }
-            if (sourceObj.has("presentWeek")) {
-                Object presentWeekVal = sourceObj.opt("presentWeek");
-                if (presentWeekVal != null && !(presentWeekVal instanceof String && ((String) presentWeekVal).trim().isEmpty())) {
-                    merged.put("presentWeek", presentWeekVal);
-                }
-            }
+            if (sourceObj.has(k)) merged.put(k, sourceObj.get(k));
         }
 
         // 时间节次-sections：优先用解析结果，否则取活跃课表值；始终序列化为 JSON 字符串
@@ -583,11 +545,7 @@ public class ApiClient {
         }
 
         // school 必须为 JSON 字符串（服务端要求）
-        String school = merged.optString("school", "{}");
-        if (sourceObj.has("school")) {
-            Object srcSchool = sourceObj.opt("school");
-            school = srcSchool instanceof String ? (String) srcSchool : (srcSchool != null ? srcSchool.toString() : "{}");
-        }
+        String school = sourceObj.optString("school", "{}");
         if (school.isEmpty()) school = "{}";
         merged.put("school", school);
 
@@ -605,16 +563,7 @@ public class ApiClient {
             if (sourceExt.has("bgSetting")) mergedExt.put("bgSetting", sourceExt.get("bgSetting"));
             if (sourceExt.has("degree")) mergedExt.put("degree", sourceExt.get("degree"));
             if (sourceExt.has("showNotInWeek")) mergedExt.put("showNotInWeek", sourceExt.get("showNotInWeek"));
-            if (sourceExt.has("startSemester")) mergedExt.put("startSemester", sourceExt.get("startSemester"));
         } catch (Exception ignored) {}
-        String finalStartSemester = merged.optString("startSemester", "");
-        if (!finalStartSemester.isEmpty()) {
-            try {
-                mergedExt.put("startSemester", Long.parseLong(finalStartSemester));
-            } catch (Exception ignored) {
-                mergedExt.put("startSemester", finalStartSemester);
-            }
-        }
         merged.put("extend", mergedExt.toString());
 
         JSONObject body = new JSONObject()
@@ -732,3 +681,4 @@ public class ApiClient {
         }
     }
 }
+
