@@ -5,6 +5,11 @@ import android.content.Context
 fun Context.writablePrefs() = getSharedPreferences(packageName + "_preferences", Context.MODE_PRIVATE)
 
 object HostCompat {
+    private const val PREF_KEY_SHIGUANG_REPO_URL = "debug_shiguang_repo_url"
+    private const val PREF_KEY_SHIGUANG_REPO_BRANCH = "debug_shiguang_repo_branch"
+    private const val DEFAULT_SHIGUANG_REPO_URL = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"
+    private const val DEFAULT_SHIGUANG_REPO_BRANCH = "main"
+
     @JvmField
     var hostLoader: ClassLoader? = null
 
@@ -91,5 +96,27 @@ object HostCompat {
         if (!token.isNullOrBlank()) editor.putString("service_token", token)
         if (!deviceId.isNullOrBlank()) editor.putString("device_id", deviceId)
         editor.apply()
+    }
+
+    fun getShiguangRepoUrl(context: Context): String {
+        return context.writablePrefs()
+            .getString(PREF_KEY_SHIGUANG_REPO_URL, DEFAULT_SHIGUANG_REPO_URL)
+            ?.trim()
+            ?.trimEnd('/')
+            .takeUnless { it.isNullOrBlank() }
+            ?: DEFAULT_SHIGUANG_REPO_URL
+    }
+
+    fun getShiguangRepoBranch(context: Context): String {
+        return context.writablePrefs()
+            .getString(PREF_KEY_SHIGUANG_REPO_BRANCH, DEFAULT_SHIGUANG_REPO_BRANCH)
+            ?.trim()
+            .takeUnless { it.isNullOrBlank() }
+            ?: DEFAULT_SHIGUANG_REPO_BRANCH
+    }
+
+    fun buildShiguangRawUrl(context: Context, path: String): String {
+        val normalizedPath = path.trim().trimStart('/')
+        return "${getShiguangRepoUrl(context)}/raw/${getShiguangRepoBranch(context)}/$normalizedPath"
     }
 }

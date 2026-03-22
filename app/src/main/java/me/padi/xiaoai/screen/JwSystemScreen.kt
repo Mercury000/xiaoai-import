@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
+import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.OkHttpClientManager
 import me.padi.xiaoai.get
 import me.padi.xiaoai.parseYamlList
@@ -64,9 +65,9 @@ class JwSystemScreen : BaseActivity() {
         private const val KEY_COMMON   = "cache_common"
         private const val KEY_SCHOOLS  = "cache_schools"
         private const val KEY_SHIGUANG = "cache_shiguang"
+        private const val KEY_SHIGUANG_SOURCE = "cache_shiguang_source"
         private const val URL_COMMON   = "https://gitee.com/padi/aishedule/raw/master/system.json"
         private const val URL_SCHOOLS  = "https://gitee.com/padi/aishedule/raw/master/school.json"
-        private const val URL_SHIGUANG = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -273,10 +274,16 @@ class JwSystemScreen : BaseActivity() {
     /** 从缓存或远程获取拾光仓库列表 */
     private suspend fun fetchShiguang(prefs: SharedPreferences, forceRefresh: Boolean): List<JwItem> {
         return try {
-            val raw = if (!forceRefresh) prefs.getString(KEY_SHIGUANG, null) else null
+            val sourceKey = HostCompat.getShiguangRepoUrl(this) + "|" + HostCompat.getShiguangRepoBranch(this)
+            val raw = if (!forceRefresh && prefs.getString(KEY_SHIGUANG_SOURCE, null) == sourceKey) {
+                prefs.getString(KEY_SHIGUANG, null)
+            } else null
             val yaml = if (!raw.isNullOrBlank()) raw else {
-                val fetched = OkHttpClientManager.getSync(URL_SHIGUANG)
-                prefs.edit().putString(KEY_SHIGUANG, fetched).apply()
+                val fetched = OkHttpClientManager.getSync(HostCompat.buildShiguangRawUrl(this, "index/root_index.yaml"))
+                prefs.edit()
+                    .putString(KEY_SHIGUANG, fetched)
+                    .putString(KEY_SHIGUANG_SOURCE, sourceKey)
+                    .apply()
                 fetched
             }
             parseYamlList(yaml).mapNotNull { map ->
@@ -425,7 +432,7 @@ class JwSystemScreen : BaseActivity() {
     }
 
     private fun fetchShiguangAdapters(context: Context, folder: String, categoryName: String) {
-        val adaptersUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/adapters.yaml"
+        val adaptersUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/adapters.yaml")
         WaitDialog.show("加载适配器列表...")
         OkHttpClientManager.get(adaptersUrl, onSuccess = { resp ->
             WaitDialog.dismiss()
@@ -456,7 +463,7 @@ class JwSystemScreen : BaseActivity() {
         val url = adapterMap["import_url"] ?: ""
         val desc = adapterMap["description"] ?: ""
         
-        val scriptUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/$jsPath"
+        val scriptUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/$jsPath")
         WaitDialog.show("脚本下载中...")
         OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
             WaitDialog.dismiss()

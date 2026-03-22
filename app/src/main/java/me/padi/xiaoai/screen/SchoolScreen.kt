@@ -105,10 +105,9 @@ class SchoolScreen : BaseActivity() {
         private const val PREF_NAME = "shiguang_cache"
         private const val CACHE_KEY_YAML = "root_index_yaml"
         private const val CACHE_KEY_TS   = "root_index_ts"
+        private const val CACHE_KEY_SOURCE = "root_index_source"
         /** 缓存有效期 6 小时；强制刷新时忽略 */
         private const val CACHE_TTL_MS   = 6 * 60 * 60 * 1000L
-        private const val REMOTE_URL =
-            "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/index/root_index.yaml"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -136,10 +135,13 @@ class SchoolScreen : BaseActivity() {
         parseAndPopulateList(localJson)
 
         val prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val sourceKey = HostCompat.getShiguangRepoUrl(this) + "|" + HostCompat.getShiguangRepoBranch(this)
 
         // 2. 非强制刷新时尝试从缓存恢复
         if (!forceRefresh) {
-            val cached = prefs.getString(CACHE_KEY_YAML, null)
+            val cached = if (prefs.getString(CACHE_KEY_SOURCE, null) == sourceKey) {
+                prefs.getString(CACHE_KEY_YAML, null)
+            } else null
             val ts     = prefs.getLong(CACHE_KEY_TS, 0L)
             if (!cached.isNullOrBlank()) {
                 parseAndPopulateList(cached)
@@ -152,13 +154,14 @@ class SchoolScreen : BaseActivity() {
 
         // 3. 拉取远程，更新缓存并刷新 UI
         isRefreshing = true
-        OkHttpClientManager.get(REMOTE_URL, onSuccess = { response ->
+        OkHttpClientManager.get(HostCompat.buildShiguangRawUrl(this, "index/root_index.yaml"), onSuccess = { response ->
             try {
                 val remoteContent = response.body.string()
                 if (remoteContent.isNotBlank()) {
                     // 持久化到缓存
                     prefs.edit()
                         .putString(CACHE_KEY_YAML, remoteContent)
+                        .putString(CACHE_KEY_SOURCE, sourceKey)
                         .putLong(CACHE_KEY_TS, System.currentTimeMillis())
                         .apply()
                     runOnUiThread { parseAndPopulateList(remoteContent) }
@@ -310,7 +313,7 @@ private fun extractYamlPair(line: String): Pair<String, String>? {
 }
 
 private fun startOfficialJsImport(context: Context, folder: String, name: String, jsPath: String, url: String, desc: String) {
-    val scriptUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/$jsPath"
+    val scriptUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/$jsPath")
     WaitDialog.show("加载脚本...")
     OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
         WaitDialog.dismiss()
@@ -401,7 +404,7 @@ private fun SchoolListScreenContent(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
                                 if (school.importType == "shiguang_official") {
                                     val folder = school.url // 我们之前把 resource_folder 存到了 url
-                                    val adaptersUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/main/resources/$folder/adapters.yaml"
+                                    val adaptersUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/adapters.yaml")
                                     
                                         WaitDialog.show("加载适配器...")
                                         OkHttpClientManager.get(adaptersUrl, { resp ->

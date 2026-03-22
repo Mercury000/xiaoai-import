@@ -68,9 +68,16 @@ class ModuleScreen : BaseActivity() {
         setContent {
             MiuixTheme {
                 var showBottomSheet = remember { mutableStateOf(false) }
+                var showShiguangSourceSheet = remember { mutableStateOf(false) }
 
                 var url by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_url", "")) }
                 var javaScriptStr by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_script", "")) }
+                var shiguangRepoUrl by remember {
+                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_url", "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse") ?: "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse")
+                }
+                var shiguangRepoBranch by remember {
+                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "main") ?: "main")
+                }
                 val context = LocalContext.current
                 Scaffold { paddingValues ->
                     LazyColumn(
@@ -131,6 +138,49 @@ class ModuleScreen : BaseActivity() {
                                 }
                                 Spacer(Modifier.height(20.dp))
                             }
+                            WindowBottomSheet(
+                                show = showShiguangSourceSheet,
+                                title = "自定义拾光仓库源",
+                                onDismissRequest = { showShiguangSourceSheet.value = false }) {
+                                val dismiss = LocalWindowBottomSheetState.current
+                                TextField(
+                                    value = shiguangRepoUrl,
+                                    onValueChange = { newValue: String -> shiguangRepoUrl = newValue },
+                                    label = "仓库 URL"
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                TextField(
+                                    value = shiguangRepoBranch,
+                                    onValueChange = { newValue: String -> shiguangRepoBranch = newValue },
+                                    label = "分支"
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(
+                                        modifier = Modifier.weight(1f),
+                                        text = "重置",
+                                        onClick = {
+                                            shiguangRepoUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"
+                                            shiguangRepoBranch = "main"
+                                        }
+                                    )
+                                    Spacer(Modifier.width(16.dp))
+                                    Button(
+                                        modifier = Modifier.weight(1f),
+                                        onClick = {
+                                            context.writablePrefs().edit()
+                                                .putString("debug_shiguang_repo_url", shiguangRepoUrl)
+                                                .putString("debug_shiguang_repo_branch", shiguangRepoBranch)
+                                                .apply()
+                                            dismiss?.invoke()
+                                        },
+                                        colors = ButtonDefaults.buttonColorsPrimary()
+                                    ) {
+                                        Text("保存", color = MiuixTheme.colorScheme.onPrimary)
+                                    }
+                                }
+                                Spacer(Modifier.height(20.dp))
+                            }
                             Image(
                                 modifier = Modifier.fillMaxWidth(),
                                 painter = painterResource(id = R.drawable.xiaoai),
@@ -175,6 +225,23 @@ class ModuleScreen : BaseActivity() {
                                     },
                                     onClick = {
                                         showBottomSheet.value = true
+                                    })
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Card {
+                                BasicComponent(
+                                    title = "自定义拾光仓库源",
+                                    summary = "可配置仓库 URL 和 branch，用于拾光列表、适配器与脚本下载",
+                                    startAction = {
+                                        Icon(
+                                            modifier = Modifier.padding(end = 16.dp),
+                                            painter = painterResource(R.drawable.social_leaderboard_24px),
+                                            contentDescription = null,
+                                            tint = MiuixTheme.colorScheme.onBackground
+                                        )
+                                    },
+                                    onClick = {
+                                        showShiguangSourceSheet.value = true
                                     })
                             }
                             Spacer(Modifier.height(10.dp))
