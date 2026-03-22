@@ -269,6 +269,7 @@ class ModuleScreen : BaseActivity() {
                                         openContributorQQ(context, "3373587110")
                                     })
                             }
+                            Spacer(Modifier.height(10.dp))
                             Card {
                                 BasicComponent(
                                     title = "Mercury",
