@@ -174,7 +174,7 @@ class ModuleScreen : BaseActivity() {
                             }
                             Spacer(Modifier.height(10.dp))
                             SmallTitle(
-                                text = "首席开发者", insideMargin = PaddingValues(16.dp, 4.dp)
+                                text = "开发者", insideMargin = PaddingValues(16.dp, 4.dp)
                             )
                             Card {
                                 BasicComponent(
@@ -197,14 +197,10 @@ class ModuleScreen : BaseActivity() {
                                         openContributorQQ(context, "3373587110")
                                     })
                             }
-                            Spacer(Modifier.height(10.dp))
-                            SmallTitle(
-                                text = "开发者", insideMargin = PaddingValues(16.dp, 4.dp)
-                            )
                             Card {
                                 BasicComponent(
                                     title = "Mercury",
-                                    summary = "AI导入课表部分全部代码实现",
+                                    summary = "AI导入课表部分全部代码实现；超级小爱适配",
                                     startAction = {
                                         AsyncImage(
                                             modifier = Modifier
