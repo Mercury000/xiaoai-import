@@ -11,7 +11,6 @@ import android.widget.Toast
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import me.padi.xiaoai.screen.ModuleScreen
-import me.padi.xiaoai.screen.ScoreScreen
 import top.sacz.xphelper.ext.toClass
 
 
@@ -35,16 +34,6 @@ class WebAppInterface(private val context: Context) {
                 Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
             }.show().findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
 
-    }
-
-    @JavascriptInterface
-    fun navScoreScreen(json: String) {
-        val intent = Intent(context, ScoreScreen::class.java)
-        intent.putExtra("json", json)
-        intent.putExtra(
-            "proxy_target_activity", context.proxyActivity()
-        )
-        context.startActivity(intent)
     }
 
     @JavascriptInterface

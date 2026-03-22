@@ -32,7 +32,6 @@ import coil3.compose.AsyncImage
 import me.padi.xiaoai.R
 import me.padi.xiaoai.click.importCourseFormJw
 import me.padi.xiaoai.click.openContributorQQ
-import me.padi.xiaoai.click.queryScoreFormSchool
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
 import me.padi.xiaoai.writablePrefs
@@ -153,23 +152,6 @@ class ModuleScreen : BaseActivity() {
                                     })
                             }
                             Spacer(Modifier.height(10.dp))
-                            Card {
-                                BasicComponent(
-                                    title = "成绩查询",
-                                    summary = "从指定学校查询成绩",
-                                    startAction = {
-                                        Icon(
-                                            modifier = Modifier.padding(end = 16.dp),
-                                            painter = painterResource(R.drawable.social_leaderboard_24px),
-                                            contentDescription = null,
-                                            tint = MiuixTheme.colorScheme.onBackground
-                                        )
-                                    },
-                                    onClick = {
-                                        queryScoreFormSchool(context)
-                                    })
-                            }
-
                             Spacer(Modifier.height(10.dp))
                             SmallTitle(
                                 text = "调试", insideMargin = PaddingValues(16.dp, 4.dp)

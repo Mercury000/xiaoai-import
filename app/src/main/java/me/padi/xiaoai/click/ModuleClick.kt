@@ -1,12 +1,10 @@
 package me.padi.xiaoai.click
 
-import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import com.highcapable.kavaref.KavaRef.Companion.asResolver
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.log.YLog
 import com.kongzue.dialogx.dialogs.BottomMenu
 import com.kongzue.dialogx.dialogs.InputDialog
 import com.kongzue.dialogx.dialogs.TipDialog
@@ -26,7 +24,6 @@ import me.padi.xiaoai.parseYamlList
 import me.padi.xiaoai.launchImportActivity
 import me.padi.xiaoai.screen.AiScreen
 import me.padi.xiaoai.screen.JwSystemScreen
-import me.padi.xiaoai.screen.ScoreScreen
 import me.padi.xiaoai.screen.SchoolScreen
 import me.padi.xiaoai.screen.WebViewScreen
 import org.json.JSONArray
@@ -140,57 +137,7 @@ fun importCourseFormJw(context: Context) {
         }
 }
 
-fun queryScoreFormSchool(context: Context) {
-    val activity = context as Activity
-    val waitDialog = WaitDialog.show("加载中")
-    OkHttpClientManager.get(
-        url = "https://gitee.com/padi/aishedule/raw/master/score.json",
-        onSuccess = { response ->
-            waitDialog.doDismiss()
-            try {
-                val responseBody = response.body.string()
-                val jsonArray = JSONArray(responseBody)
-                val names = mutableListOf<String>()
-                val urls = mutableListOf<String>()
-                val types = mutableListOf<String>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    names.add(obj.optString("name", ""))
-                    urls.add(obj.optString("url", ""))
-                    types.add(obj.optString("type", ""))
-                }
-
-                activity.runOnUiThread {
-                    BottomMenu.show(names.toTypedArray()).setTitle("提示")
-                        .setMessage("选择学校进行导入")
-                        .setSingleSelection().setOnMenuItemClickListener { dialog, text, index ->
-                            val targetUrl = urls[index]
-                            val targetType = types[index]
-                            val jsUrl = "https://gitee.com/padi/aishedule/raw/master/score/$targetType.js"
-                            WaitDialog.show("加载中")
-                            OkHttpClientManager.get(jsUrl, onSuccess = { resp ->
-                                WaitDialog.dismiss()
-                                val jsStr = resp.body.string()
-                                launchImportActivity(context, targetUrl, "导入成绩", "请登录后点击导入成绩", jsStr)
-                            }, onError = { e ->
-                                WaitDialog.dismiss()
-                                TipDialog.show("加载失败: ${e.message}")
-                            })
-                            false
-                        }
-                }
-            } catch (e: Exception) {
-                YLog.debug("解析失败: ${e.message}")
-            }
-        },
-        onError = { e ->
-            waitDialog.doDismiss()
-            TipDialog.show(e.message, WaitDialog.TYPE.ERROR)
-        })
-}
-
 data class SchoolData(val name: String, val id: Long, val status: String, val url: String)
-data class ScoreData(val name: String, val type: String, val status: String, val url: String)
 data class SystemData(val name: String, val type: String, val status: String)
 
 fun openContributorQQ(context: Context, uin: String) {

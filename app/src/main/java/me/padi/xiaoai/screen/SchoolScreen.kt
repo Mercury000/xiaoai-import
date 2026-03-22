@@ -51,7 +51,6 @@ import com.kevinnzou.web.WebContent
 import com.kevinnzou.web.WebView
 import com.kevinnzou.web.rememberWebViewNavigator
 import com.kevinnzou.web.rememberWebViewState
-import me.padi.xiaoai.click.queryScoreFormSchool
 import me.padi.xiaoai.click.openContributorQQ
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity

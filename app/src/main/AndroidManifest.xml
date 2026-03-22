@@ -50,10 +50,6 @@
             android:exported="true"
             android:screenOrientation="portrait" />
         <activity
-            android:name=".screen.ScoreScreen"
-            android:exported="true"
-            android:screenOrientation="portrait" />
-        <activity
             android:name=".screen.WebViewScreen"
             android:exported="true"
             android:screenOrientation="portrait" />
