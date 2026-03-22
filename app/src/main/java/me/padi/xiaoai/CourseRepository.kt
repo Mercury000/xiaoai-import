@@ -126,7 +126,7 @@ object CourseRepository {
         runWithRetry { tok ->
             ApiClient.updateTableSettings(
                 ctId,
-                name,
+                table.name.ifBlank { name },
                 sourceSettingStr ?: "{}",
                 table.settingStr ?: "{}",
                 customSchedule,

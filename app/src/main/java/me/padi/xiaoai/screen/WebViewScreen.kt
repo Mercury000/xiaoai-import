@@ -87,8 +87,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
+import java.util.TimeZone
 
 /** 每次页面加载后注入的桥接胶水脚本，保证页面跳转后 AndroidBridgePromise 始终可用 */
 private val BRIDGE_GLUE_JS = """
@@ -186,10 +191,82 @@ private fun normalizeShiguangCourseConfig(configJson: String): String {
         if (src.has("termStartDate")) mapped.put("startSemester", src.get("termStartDate"))
         if (src.has("currentWeek")) mapped.put("presentWeek", src.get("currentWeek"))
 
+        val startDateStr = sequenceOf(
+            src.optString("semesterStartDate", ""),
+            src.optString("startDate", ""),
+            src.optString("termStartDate", ""),
+            mapped.optString("startSemester", "")
+        ).firstOrNull { it.isNotBlank() }
+        val totalWeeks = when {
+            src.has("semesterTotalWeeks") -> src.optInt("semesterTotalWeeks", 0)
+            mapped.has("totalWeek") -> mapped.optInt("totalWeek", 0)
+            else -> 0
+        }
+
+        startDateStr?.let { rawStart ->
+            normalizeSemesterStart(rawStart)?.let { normalizedStart ->
+                mapped.put("startSemester", normalizedStart)
+                mapped.put("presentWeek", calculatePresentWeek(rawStart, totalWeeks))
+            }
+        }
+
         mapped.toString()
     } catch (_: Exception) {
         configJson
     }
+}
+
+private fun normalizeSemesterStart(raw: String): String? {
+    val value = raw.trim()
+    if (value.isEmpty()) return null
+
+    value.toLongOrNull()?.let { numeric ->
+        return if (numeric in 1L..99_999_999_999L) (numeric * 1000L).toString() else numeric.toString()
+    }
+
+    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
+        isLenient = false
+        timeZone = TimeZone.getDefault()
+    }
+    val date = parser.parse(value) ?: return null
+    val calendar = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 8)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    return calendar.timeInMillis.toString()
+}
+
+private fun calculatePresentWeek(rawStart: String, totalWeeks: Int): Int {
+    val startCal = Calendar.getInstance()
+    rawStart.trim().toLongOrNull()?.let { numeric ->
+        val millis = if (numeric in 1L..99_999_999_999L) numeric * 1000L else numeric
+        startCal.timeInMillis = millis
+    } ?: run {
+        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
+            isLenient = false
+            timeZone = TimeZone.getDefault()
+        }
+        val startDate = parser.parse(rawStart.trim()) ?: return 1
+        startCal.time = startDate
+    }
+    startCal.apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val todayCal = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val diffDays = ((todayCal.timeInMillis - startCal.timeInMillis) / (24L * 60L * 60L * 1000L)).toInt()
+    val week = max(1, diffDays / 7 + 1)
+    return if (totalWeeks > 0) week.coerceAtMost(totalWeeks) else week
 }
 
 private fun normalizeShiguangTimeSlots(timeSlotsJson: String): String {
@@ -426,7 +503,8 @@ private fun WebViewScreenContent(intent: Intent) {
                     try {
                         val appId = HostCompat.getAppId()
                         val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
-                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", configJson, null)
+                        val normalizedConfig = normalizeShiguangCourseConfig(configJson)
+                        CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", normalizedConfig, null)
                         callback(true, null)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -439,7 +517,8 @@ private fun WebViewScreenContent(intent: Intent) {
                     try {
                         val appId = HostCompat.getAppId()
                         val ctid = CourseRepository.getActiveTableId(context, appId) ?: throw Exception("无活跃课表")
-                        val schedule = ScheduleConfig().apply { sections = timeSlotsJson }
+                        val normalizedTimeSlots = normalizeShiguangTimeSlots(timeSlotsJson)
+                        val schedule = ScheduleConfig().apply { sections = normalizedTimeSlots }
                         CourseRepository.updateTableSettings(context, appId, ctid, "当前课表", null, schedule)
                         callback(true, null)
                     } catch (e: Exception) {
