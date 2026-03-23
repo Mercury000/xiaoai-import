@@ -555,8 +555,8 @@ private fun SchoolListScreenContent(
 
                                         val prefs = context.writablePrefs()
                                         val apiKey = prefs.getString("api_key", "") ?: ""
-                                        val modelName = prefs.getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo"
-                                        val apiUrl = prefs.getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1"
+                                        val modelName = prefs.getString("model_name", "qwen3-coder-plus") ?: "qwen3-coder-plus"
+                                        val apiUrl = prefs.getString("api_url", "https://dashscope.aliyuncs.com/compatible-mode/v1") ?: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
                                         withContext(Dispatchers.IO) {
                                             ApiClient.parseCoursesStreaming(

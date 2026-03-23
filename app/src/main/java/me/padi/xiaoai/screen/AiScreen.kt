@@ -56,10 +56,10 @@ class AiScreen : BaseActivity() {
 
             // 从SharedPreferences读取保存的值
             var apiUrl by remember {
-                mutableStateOf(context.writablePrefs().getString("api_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1")
+                mutableStateOf(context.writablePrefs().getString("api_url", "https://dashscope.aliyuncs.com/compatible-mode/v1") ?: "https://dashscope.aliyuncs.com/compatible-mode/v1")
             }
             var modelName by remember {
-                mutableStateOf(context.writablePrefs().getString("model_name", "gpt-3.5-turbo") ?: "gpt-3.5-turbo")
+                mutableStateOf(context.writablePrefs().getString("model_name", "qwen3-coder-plus") ?: "qwen3-coder-plus")
             }
             var jwUrl by remember {
                 mutableStateOf(context.writablePrefs().getString("jw_webview_url", "") ?: "")
