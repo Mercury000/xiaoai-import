@@ -180,6 +180,10 @@ android {
         checkReleaseBuilds = false
     }
 
+    androidResources.additionalParameters += listOf(
+        "--allow-reserved-package-id", "--package-id", "0xf4"
+    )
+
     packaging {
         resources {
             merges += "META-INF/xposed/*"
