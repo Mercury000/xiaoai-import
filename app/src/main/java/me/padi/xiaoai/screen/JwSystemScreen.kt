@@ -70,6 +70,9 @@ class JwSystemScreen : BaseActivity() {
         private const val KEY_SHIGUANG_SOURCE = "cache_shiguang_pb_source"
         private const val URL_COMMON   = "https://gitee.com/padi/aishedule/raw/master/system.json"
         private const val URL_SCHOOLS  = "https://gitee.com/padi/aishedule/raw/master/school.json"
+
+        // 白名单：用于清理 SharedPreferences 中残留的废弃键
+        private val VALID_KEYS = setOf(KEY_COMMON, KEY_SCHOOLS, KEY_SHIGUANG, KEY_SHIGUANG_SOURCE)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -176,6 +179,14 @@ class JwSystemScreen : BaseActivity() {
     internal fun fetchData(forceRefresh: Boolean = false) {
         isLoading = true
         val prefs: SharedPreferences = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+
+        // 移除不在白名单中的旧键
+        val keysToRemove = prefs.all.keys - VALID_KEYS
+        if (keysToRemove.isNotEmpty()) {
+            val editor = prefs.edit()
+            keysToRemove.forEach { editor.remove(it) }
+            editor.apply()
+        }
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val commonDeferred   = async { fetchCommon(prefs, forceRefresh) }
