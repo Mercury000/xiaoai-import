@@ -1,15 +1,48 @@
+# Gradle / Android build outputs
+.gradle/
+**/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Keep signing template under build/config tracked
+!/build/
+/build/*
+!/build/config/
+/build/config/*
+!/build/config/signing_template.properties
+
+# Signing secrets and keystore files
+/build/config/signing.properties
+/build/signing/
+*.jks
+*.keystore
+*.p12
+
+# IDE files
+.idea/
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+*.iws
+*.ipr
+
+# Local machine config
 local.properties
+/local.properties
+.kotlin/
+
+# Python cache and logs
+__pycache__/
+*.pyc
+*.pyo
+/build_logs/
+/build_output_full.txt
+
+# Package outputs
+*.apk
+*.aab
+/app/release/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
