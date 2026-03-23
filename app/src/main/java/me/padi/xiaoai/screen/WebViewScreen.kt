@@ -336,6 +336,7 @@ private fun WebViewScreenContent(intent: Intent) {
     var tableName by remember { mutableStateOf("") }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
     val currentImportState by rememberUpdatedState(importState)
+    var aiParsingInProgress by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     
@@ -354,12 +355,14 @@ private fun WebViewScreenContent(intent: Intent) {
 
     /** 抽取出来的 AI 源码解析逻辑，避免与 Bridge 交互逻辑混杂 */
     fun processHtmlForAi(html: String) {
+        aiParsingInProgress = true
         Log.d("WebViewScreen", "开始 processHtmlForAi, html 长度: ${html.length}")
         coroutineScope.launch {
             try {
                 val serviceToken = HostCompat.getAccessToken(context)
                 val deviceId = HostCompat.getDeviceId(context)
                 if (serviceToken == null || deviceId == null) {
+                    aiParsingInProgress = false
                     importState = ImportState.Error("无法获取令牌")
                     return@launch
                 }
@@ -373,7 +376,11 @@ private fun WebViewScreenContent(intent: Intent) {
                     ApiClient.parseCoursesStreaming(
                         html, apiKey, modelName, apiUrl, ApiClient.SYSTEM_PROMPT,
                         object : ApiClient.ParseCallback {
-                            override fun onUpdate(reasoning: String, content: String) {}
+                            override fun onUpdate(reasoning: String, content: String) {
+                                coroutineScope.launch {
+                                    importState = ImportState.Parsing("AI 正在解析中，请稍候...")
+                                }
+                            }
                             override fun onSuccess(result: ParseResult) {
                                 coroutineScope.launch {
                                     try {
@@ -386,16 +393,22 @@ private fun WebViewScreenContent(intent: Intent) {
                                         importState = ImportState.Success("已进入预览，请确认导入")
                                     } catch (e: Exception) {
                                         importState = ImportState.Error(e.message ?: "导入失败")
+                                    } finally {
+                                        aiParsingInProgress = false
                                     }
                                 }
                             }
                             override fun onError(e: Exception) {
-                                coroutineScope.launch { importState = ImportState.Error(e.message ?: "解析失败") }
+                                coroutineScope.launch {
+                                    aiParsingInProgress = false
+                                    importState = ImportState.Error(e.message ?: "解析失败")
+                                }
                             }
                         }
                     )
                 }
             } catch (e: Exception) {
+                aiParsingInProgress = false
                 importState = ImportState.Error(e.message ?: "操作异常")
             }
         }
@@ -530,7 +543,7 @@ private fun WebViewScreenContent(intent: Intent) {
             }
             override fun onTaskCompleted() {
                 coroutineScope.launch {
-                    if (currentImportState is ImportState.Loading || currentImportState is ImportState.Parsing) {
+                    if (!aiParsingInProgress && (currentImportState is ImportState.Loading || currentImportState is ImportState.Parsing)) {
                         importState = ImportState.Idle
                     }
                 }
@@ -606,7 +619,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                     lastLoadedUrl = url
                                     Log.d("WebViewScreen", "onPageStarted: $url")
                                     val isTransientUrl = url == "about:blank"
-                                    if (currentImportState is ImportState.Loading && !isTransientUrl) {
+                                    if (!aiParsingInProgress && currentImportState is ImportState.Loading && !isTransientUrl) {
                                         importState = ImportState.Idle
                                     }
                                 }
