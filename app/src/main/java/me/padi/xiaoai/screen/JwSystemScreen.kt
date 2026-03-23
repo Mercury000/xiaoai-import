@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.icu.text.Transliterator
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -78,6 +79,7 @@ class JwSystemScreen : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         enableEdgeToEdge()
         fetchData(forceRefresh = false)
         setContent {
