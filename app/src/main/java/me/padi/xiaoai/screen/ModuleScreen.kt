@@ -231,7 +231,7 @@ class ModuleScreen : BaseActivity() {
                             Card {
                                 BasicComponent(
                                     title = "自定义拾光仓库源",
-                                    summary = "可配置仓库 URL 和脚本分支；索引固定走 index-pb-release",
+                                    summary = "可配置仓库 URL 和脚本分支",
                                     startAction = {
                                         Icon(
                                             modifier = Modifier.padding(end = 16.dp),
