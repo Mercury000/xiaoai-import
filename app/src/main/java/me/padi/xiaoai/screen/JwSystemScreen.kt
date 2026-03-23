@@ -1,6 +1,5 @@
 package me.padi.xiaoai.screen
 
-import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.icu.text.Transliterator
@@ -25,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
+import me.padi.xiaoai.click.openAiImportScreen
+import me.padi.xiaoai.click.openJsonImportDialog
 import me.padi.xiaoai.HostCompat
 import me.padi.xiaoai.OkHttpClientManager
 import me.padi.xiaoai.ShiguangAdapterEntry
@@ -36,7 +37,6 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.*
 import org.json.JSONArray
-import org.json.JSONObject
 import java.util.*
 
 enum class JwType {
@@ -50,6 +50,7 @@ data class JwItem(
     val extra: String = "", // id for SCHOOL/COMMON, resource_folder for SHIGUANG
     val isCommon: Boolean = false,
     val sortKey: String = "#",
+    val order: Int = 0,
     val adapters: List<ShiguangAdapterEntry> = emptyList()
 )
 
@@ -196,11 +197,13 @@ class JwSystemScreen : BaseActivity() {
                 items.addAll(commonDeferred.await())
                 items.addAll(schoolsDeferred.await())
                 items.addAll(shiguangDeferred.await())
+                items.addAll(buildBuiltinImportItems())
 
                 // 按 sortKey 排序（# 最前），同组内按名称排
                 val sorted = items.sortedWith(
                     compareBy(
                         { if (it.sortKey == "#") "\u0000" else it.sortKey.lowercase(Locale.ROOT) },
+                        { it.order },
                         { it.name }
                     )
                 )
@@ -316,6 +319,27 @@ class JwSystemScreen : BaseActivity() {
         }
     }
 
+    private fun buildBuiltinImportItems(): List<JwItem> {
+        return listOf(
+            JwItem(
+                name = "Json导入",
+                type = JwType.COMMON,
+                extra = "__json_import__",
+                isCommon = true,
+                sortKey = "#",
+                order = 10_000
+            ),
+            JwItem(
+                name = "AI解析导入",
+                type = JwType.COMMON,
+                extra = "__ai_import__",
+                isCommon = true,
+                sortKey = "#",
+                order = 10_001
+            )
+        )
+    }
+
     @Composable
     private fun JwSystemContent(paddingValues: PaddingValues) {
         val context = LocalContext.current
@@ -420,6 +444,14 @@ class JwSystemScreen : BaseActivity() {
     private fun handleItemClick(context: Context, item: JwItem) {
         when (item.type) {
             JwType.COMMON, JwType.SCHOOL -> {
+                if (item.extra == "__json_import__") {
+                    openJsonImportDialog(context)
+                    return
+                }
+                if (item.extra == "__ai_import__") {
+                    openAiImportScreen(context)
+                    return
+                }
                 val jsUrl = if (item.type == JwType.COMMON) {
                     "https://gitee.com/padi/aishedule/raw/master/system/${item.extra}.js"
                 } else {

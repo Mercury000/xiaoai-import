@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import me.padi.xiaoai.R
-import me.padi.xiaoai.click.importCourseFormJw
 import me.padi.xiaoai.click.openContributorQQ
 import me.padi.xiaoai.hook.HookEntry
 import me.padi.xiaoai.proxyActivity
@@ -108,26 +107,6 @@ class ModuleScreen : BaseActivity() {
                                 painter = painterResource(id = R.drawable.xiaoai),
                                 contentDescription = null
                             )
-                            Spacer(Modifier.height(10.dp))
-                            SmallTitle(
-                                text = "教务系统", insideMargin = PaddingValues(16.dp, 4.dp)
-                            )
-                            Card {
-                                BasicComponent(
-                                    title = "导入课表",
-                                    summary = "从教务系统中导入课表",
-                                    startAction = {
-                                        Icon(
-                                            modifier = Modifier.padding(end = 16.dp),
-                                            painter = painterResource(R.drawable.database_upload_24px),
-                                            contentDescription = null,
-                                            tint = MiuixTheme.colorScheme.onBackground
-                                        )
-                                    },
-                                    onClick = {
-                                        importCourseFormJw(context)
-                                    })
-                            }
                             Spacer(Modifier.height(10.dp))
                             Spacer(Modifier.height(10.dp))
                             SmallTitle(
