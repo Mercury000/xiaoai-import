@@ -18,6 +18,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import me.padi.xiaoai.R
 import me.padi.xiaoai.click.importCourseFormJw
@@ -79,8 +91,9 @@ class ModuleScreen : BaseActivity() {
                     mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "main") ?: "main")
                 }
                 val context = LocalContext.current
-                Scaffold { paddingValues ->
-                    LazyColumn(
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Scaffold { paddingValues ->
+                        LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
                             .overScrollVertical()
@@ -88,101 +101,10 @@ class ModuleScreen : BaseActivity() {
                         contentPadding = PaddingValues(top = paddingValues.calculateTopPadding()),
                     ) {
                         item {
-                            WindowBottomSheet(
-                                show = showBottomSheet,
-                                title = "JavaScript注入",
-                                onDismissRequest = { showBottomSheet.value = false }) {
-                                val dismiss = LocalWindowBottomSheetState.current
-                                TextField(
-                                    value = url,
-                                    onValueChange = { newValue: String -> url = newValue },
-                                    label = "教务系统链接"
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                TextField(
-                                    modifier = Modifier.heightIn(max = 250.dp),
-                                    value = javaScriptStr,
-                                    onValueChange = { javaScriptStr = it },
-                                    label = "JavaScript"
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    TextButton(
-                                        modifier = Modifier.weight(1f),
-                                        text = "关闭",
-                                        onClick = { dismiss?.invoke() })
-                                    Spacer(Modifier.width(16.dp))
-                                    Button(
-                                        modifier = Modifier.weight(1f), onClick = {
-                                            context.writablePrefs().edit()
-                                                .putString("debug_jw_url", url)
-                                                .putString("debug_jw_script", javaScriptStr)
-                                                .apply()
-                                            dismiss?.invoke()
-                                            (context as Activity).finish()
-                                            val intent = Intent(context, WebViewScreen::class.java).apply {
-                                                putExtra("url", url)
-                                                putExtra("script", javaScriptStr)
-                                                putExtra("title", "JavaScript注入")
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                            context.startActivity(intent)
-                                        }, colors = ButtonDefaults.buttonColorsPrimary()
-                                    ) {
-                                        Text(
-                                            "进入", color = MiuixTheme.colorScheme.onPrimary
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(20.dp))
-                            }
-                            WindowBottomSheet(
-                                show = showShiguangSourceSheet,
-                                title = "自定义拾光仓库源",
-                                onDismissRequest = { showShiguangSourceSheet.value = false }) {
-                                val dismiss = LocalWindowBottomSheetState.current
-                                TextField(
-                                    value = shiguangRepoUrl,
-                                    onValueChange = { newValue: String -> shiguangRepoUrl = newValue },
-                                    label = "仓库 URL"
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                TextField(
-                                    value = shiguangRepoBranch,
-                                    onValueChange = { newValue: String -> shiguangRepoBranch = newValue },
-                                    label = "脚本分支"
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                Row(modifier = Modifier.fillMaxWidth()) {
-                                    TextButton(
-                                        modifier = Modifier.weight(1f),
-                                        text = "重置",
-                                        onClick = {
-                                            shiguangRepoUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"
-                                            shiguangRepoBranch = "main"
-                                        }
-                                    )
-                                    Spacer(Modifier.width(16.dp))
-                                    Button(
-                                        modifier = Modifier.weight(1f),
-                                        onClick = {
-                                            context.writablePrefs().edit()
-                                                .putString("debug_shiguang_repo_url", shiguangRepoUrl)
-                                                .putString("debug_shiguang_repo_branch", shiguangRepoBranch)
-                                                .apply()
-                                            dismiss?.invoke()
-                                        },
-                                        colors = ButtonDefaults.buttonColorsPrimary()
-                                    ) {
-                                        Text("保存", color = MiuixTheme.colorScheme.onPrimary)
-                                    }
-                                }
-                                Spacer(Modifier.height(20.dp))
-                            }
+                            /* JS Sheet moved */
+                            /* Source Sheet moved */
                             Image(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                                 painter = painterResource(id = R.drawable.xiaoai),
                                 contentDescription = null
                             )
@@ -356,6 +278,107 @@ class ModuleScreen : BaseActivity() {
                         }
                     }
                 }
+
+                if (showBottomSheet.value) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=0.4f)).clickable{ showBottomSheet.value=false })
+                }
+                AnimatedVisibility(
+                    visible = showBottomSheet.value,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = slideInVertically { it },
+                    exit = slideOutVertically { it }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MiuixTheme.colorScheme.surface, RoundedCornerShape(topStart=16.dp, topEnd=16.dp))
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(top = 12.dp, bottom = 4.dp)
+                                .size(width = 40.dp, height = 4.dp)
+                                .background(
+                                    MiuixTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                        Text("JavaScript注入", fontSize=18.sp, modifier=Modifier.padding(vertical=16.dp))
+                        TextField(value = url, onValueChange = { url = it }, label = "教务系统链接")
+                        Spacer(Modifier.height(10.dp))
+                        TextField(modifier = Modifier.heightIn(max=250.dp), value = javaScriptStr, onValueChange = { javaScriptStr = it }, label = "JavaScript")
+                        Spacer(Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            TextButton(modifier = Modifier.weight(1f), text = "关闭", onClick = { showBottomSheet.value = false })
+                            Spacer(Modifier.width(16.dp))
+                            Button(
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    context.writablePrefs().edit().putString("debug_jw_url", url).putString("debug_jw_script", javaScriptStr).apply()
+                                    showBottomSheet.value = false
+                                    (context as Activity).finish()
+                                    val intent = Intent(context, WebViewScreen::class.java).apply {
+                                        putExtra("url", url); putExtra("script", javaScriptStr); putExtra("title", "JavaScript注入")
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                colors = ButtonDefaults.buttonColorsPrimary()
+                            ) { Text("进入", color = MiuixTheme.colorScheme.onPrimary) }
+                        }
+                        Spacer(Modifier.height(20.dp))
+                    }
+                }
+
+                if (showShiguangSourceSheet.value) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=0.4f)).clickable{ showShiguangSourceSheet.value=false })
+                }
+                AnimatedVisibility(
+                    visible = showShiguangSourceSheet.value,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = slideInVertically { it },
+                    exit = slideOutVertically { it }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MiuixTheme.colorScheme.surface, RoundedCornerShape(topStart=16.dp, topEnd=16.dp))
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(top = 12.dp, bottom = 4.dp)
+                                .size(width = 40.dp, height = 4.dp)
+                                .background(
+                                    MiuixTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                        Text("自定义拾光仓库源", fontSize=18.sp, modifier=Modifier.padding(vertical=16.dp))
+                        TextField(value = shiguangRepoUrl, onValueChange = { shiguangRepoUrl = it }, label = "仓库 URL")
+                        Spacer(Modifier.height(10.dp))
+                        TextField(value = shiguangRepoBranch, onValueChange = { shiguangRepoBranch = it }, label = "脚本分支")
+                        Spacer(Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            TextButton(modifier = Modifier.weight(1f), text = "重置", onClick = { shiguangRepoUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"; shiguangRepoBranch = "main" })
+                            Spacer(Modifier.width(16.dp))
+                            Button(
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    context.writablePrefs().edit().putString("debug_shiguang_repo_url", shiguangRepoUrl).putString("debug_shiguang_repo_branch", shiguangRepoBranch).apply()
+                                    showShiguangSourceSheet.value = false
+                                },
+                                colors = ButtonDefaults.buttonColorsPrimary()
+                            ) { Text("保存", color = MiuixTheme.colorScheme.onPrimary) }
+                        }
+                        Spacer(Modifier.height(20.dp))
+                    }
+                }
+            }
             }
         }
     }
