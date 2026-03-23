@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DialogEditLabel"
+                android:text="课程名" />
+
+            <EditText
+                android:id="@+id/etCourseName"
+                style="@style/DialogEditField"
+                android:hint="例如：高等数学" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DialogEditLabel"
+                android:text="教师" />
+
+            <EditText
+                android:id="@+id/etTeacher"
+                style="@style/DialogEditField"
+                android:hint="例如：张三" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DialogEditLabel"
+                android:text="地点" />
+
+            <EditText
+                android:id="@+id/etPosition"
+                style="@style/DialogEditField"
+                android:hint="例如：松1-308" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DialogEditLabel"
+                android:text="星期" />
+
+            <EditText
+                android:id="@+id/etDay"
+                style="@style/DialogEditField"
+                android:hint="1-7"
+                android:inputType="number" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DialogEditLabel"
+                android:text="节次" />
+
+            <EditText
+                android:id="@+id/etSections"
+                style="@style/DialogEditField"
+                android:hint="例如：1,2" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DialogEditLabel"
+                android:text="周次" />
+
+            <EditText
+                android:id="@+id/etWeeks"
+                style="@style/DialogEditField"
+                android:hint="例如：1,2,3" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

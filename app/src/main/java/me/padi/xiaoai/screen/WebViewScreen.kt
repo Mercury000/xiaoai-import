@@ -94,6 +94,13 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.TimeZone
+import com.kongzue.dialogx.dialogs.InputDialog
+import com.kongzue.dialogx.dialogs.MessageDialog
+import com.kongzue.dialogx.dialogs.MessageMenu
+import com.kongzue.dialogx.interfaces.OnDialogButtonClickListener
+import com.kongzue.dialogx.interfaces.OnInputDialogButtonClickListener
+import com.kongzue.dialogx.interfaces.OnMenuButtonClickListener
+import com.kongzue.dialogx.interfaces.OnMenuItemClickListener
 
 /** 每次页面加载后注入的桥接胶水脚本，保证页面跳转后 AndroidBridgePromise 始终可用 */
 private val BRIDGE_GLUE_JS = """
@@ -417,14 +424,61 @@ private fun WebViewScreenContent(intent: Intent) {
     val bridgeCallback = remember {
         object : BridgeCallback {
             override fun onShowAlert(data: AlertDialogData, latch: CountDownLatch, result: BooleanArray) {
-                alertStateRef.value = AlertPendingState(data, latch, result)
+                MessageDialog.build()
+                    .setTitle(data.title)
+                    .setMessage(data.content)
+                    .setCancelable(false)
+                    .setCancelButton("")
+                    .setOkButton(data.confirmText.ifBlank { "确定" }, object : OnDialogButtonClickListener<MessageDialog> {
+                        override fun onClick(dialog: MessageDialog, v: android.view.View): Boolean {
+                            result[0] = true
+                            latch.countDown()
+                            return false
+                        }
+                    })
+                    .show()
             }
             override fun onShowPrompt(data: PromptDialogData, latch: CountDownLatch, result: Array<String?>) {
-                promptInputRef.value = data.defaultText
-                promptStateRef.value = PromptPendingState(data, latch, result)
+                InputDialog.show(
+                    data.title,
+                    data.tip,
+                    "确定",
+                    "取消",
+                    data.defaultText
+                ).setCancelable(false)
+                    .setOkButton(object : OnInputDialogButtonClickListener<InputDialog> {
+                        override fun onClick(baseDialog: InputDialog, v: android.view.View, inputStr: String): Boolean {
+                            result[0] = inputStr
+                            latch.countDown()
+                            return false
+                        }
+                    })
+                    .setCancelButton(object : OnInputDialogButtonClickListener<InputDialog> {
+                        override fun onClick(baseDialog: InputDialog, v: android.view.View, inputStr: String): Boolean {
+                            result[0] = null
+                            latch.countDown()
+                            return false
+                        }
+                    })
+                    .show()
             }
             override fun onShowSingleSelection(data: SingleSelectionDialogData, latch: CountDownLatch, result: IntArray) {
-                selectionStateRef.value = SelectionPendingState(data, latch, result)
+                val options = data.items.map { it as CharSequence }
+                MessageMenu.show(data.title, options, object : OnMenuItemClickListener<MessageMenu> {
+                    override fun onClick(dialog: MessageMenu, text: CharSequence, index: Int): Boolean {
+                        result[0] = index
+                        latch.countDown()
+                        return false
+                    }
+                }).setCancelable(false)
+                    .setSelection(data.defaultSelectedIndex)
+                    .setCancelButton("取消", object : OnMenuButtonClickListener<MessageMenu> {
+                        override fun onClick(dialog: MessageMenu, v: android.view.View): Boolean {
+                            result[0] = -1
+                            latch.countDown()
+                            return false
+                        }
+                    })
             }
             override fun onSaveImportedCourses(coursesJson: String, callback: (Boolean, String?) -> Unit) {
                 importState = ImportState.Parsing("正在解析课程数据...")
@@ -1041,12 +1095,6 @@ private fun WebViewScreenContent(intent: Intent) {
 
     val selection = selectionStateRef.value
     if (selection != null) {
-        val initialIndex = if (selection.data.defaultSelectedIndex in selection.data.items.indices) {
-            selection.data.defaultSelectedIndex
-        } else {
-            -1
-        }
-        var selectedIndex by remember(selection) { mutableStateOf(initialIndex) }
         Dialog(onDismissRequest = {
             selectionStateRef.value = null
             selection.result[0] = -1
@@ -1068,26 +1116,18 @@ private fun WebViewScreenContent(intent: Intent) {
                                 .heightIn(max = 320.dp)
                         ) {
                             itemsIndexed(selection.data.items) { index, item ->
-                                val isSelected = index == selectedIndex
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(
-                                            if (isSelected) MiuixTheme.colorScheme.primary.copy(alpha = 0.14f)
-                                            else Color.Transparent
-                                        )
-                                        .clickable { selectedIndex = index }
+                                        .clickable {
+                                            selectionStateRef.value = null
+                                            selection.result[0] = index
+                                            selection.latch.countDown()
+                                        }
                                         .padding(horizontal = 12.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = item, modifier = Modifier.weight(1f))
-                                    if (isSelected) {
-                                        Text(
-                                            text = "已选",
-                                            fontSize = 12.sp,
-                                            color = MiuixTheme.colorScheme.primary
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -1099,19 +1139,8 @@ private fun WebViewScreenContent(intent: Intent) {
                                     selection.result[0] = -1
                                     selection.latch.countDown()
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.fillMaxWidth()
                             ) { Text("取消") }
-                            Spacer(modifier = Modifier.size(8.dp))
-                            Button(
-                                onClick = {
-                                    selectionStateRef.value = null
-                                    selection.result[0] = selectedIndex
-                                    selection.latch.countDown()
-                                },
-                                enabled = selectedIndex >= 0,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColorsPrimary()
-                            ) { Text("确定", color = MiuixTheme.colorScheme.onPrimary) }
                         }
                     }
                 }

@@ -1,12 +1,14 @@
 package com.mercury.xiaoaiimport.screen
 
+import android.app.Activity
 import android.os.Bundle
+import android.view.View
+import android.widget.EditText
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,10 +17,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -26,16 +28,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kongzue.dialogx.dialogs.MessageDialog
+import com.kongzue.dialogx.dialogs.TipDialog
+import com.kongzue.dialogx.interfaces.OnBindView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.mercury.xiaoaiimport.Course
 import com.mercury.xiaoaiimport.CourseRepository
 import com.mercury.xiaoaiimport.HostCompat
+import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.readPreviewCourses
 import com.mercury.xiaoaiimport.readPreviewSchedule
 import com.mercury.xiaoaiimport.readPreviewTableName
@@ -47,7 +52,6 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -78,8 +82,6 @@ class CoursePreviewScreen : BaseActivity() {
                 var tableName by remember { mutableStateOf(initialName) }
                 var importing by remember { mutableStateOf(false) }
                 var message by remember { mutableStateOf("") }
-                var editingIndex by remember { mutableStateOf<Int?>(null) }
-                var showConflictConfirm by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
 
                 fun startImport(finalCourses: List<Course>) {
@@ -107,6 +109,7 @@ class CoursePreviewScreen : BaseActivity() {
                 }
 
                 Scaffold(topBar = { SmallTopAppBar(title = "课程预览") }) { padding ->
+                    val dialogContext = this@CoursePreviewScreen
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -157,10 +160,7 @@ class CoursePreviewScreen : BaseActivity() {
                                 val highlight = normalized.isInvalid || conflictNames != null
 
                                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                    Column(
-                                        modifier = Modifier
-                                            .padding(12.dp)
-                                    ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
                                         Text(source.name.ifBlank { "(未命名课程)" }, fontSize = 16.sp)
                                         Text(
                                             "${dayLabel(normalized.day)}  第${normalized.sections}节  周次:${normalized.weeks}",
@@ -207,7 +207,11 @@ class CoursePreviewScreen : BaseActivity() {
                                                         color = Color(0xFFE3F2FD),
                                                         shape = RoundedCornerShape(999.dp)
                                                     )
-                                                    .clickable { editingIndex = index }
+                                                    .clickable {
+                                                        showEditCourseDialog(dialogContext, source) { edited ->
+                                                            courses[index] = edited
+                                                        }
+                                                    }
                                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                                             )
                                             Spacer(Modifier.width(8.dp))
@@ -257,149 +261,98 @@ class CoursePreviewScreen : BaseActivity() {
                                     return@Button
                                 }
                                 if (conflictCourseCount > 0) {
-                                    showConflictConfirm = true
+                                    showConflictImportConfirmDialog(dialogContext, conflictCourseCount) {
+                                        startImport(courses.map { it.copyCourse() })
+                                    }
                                     return@Button
                                 }
                                 startImport(normalizedCourses)
                             }
                         ) {
-                            if (importing) {
-                                CircularProgressIndicator()
-                            } else {
-                                Text("确认导入", color = MiuixTheme.colorScheme.onPrimary)
-                            }
+                            if (importing) CircularProgressIndicator()
+                            else Text("确认导入", color = MiuixTheme.colorScheme.onPrimary)
                         }
                         Spacer(Modifier.height(10.dp))
                     }
                 }
-
-                val idx = editingIndex
-                if (idx != null && idx in courses.indices) {
-                    EditCourseDialog(
-                        source = courses[idx],
-                        onDismiss = { editingIndex = null },
-                        onSave = { edited ->
-                            courses[idx] = edited
-                            editingIndex = null
-                        }
-                    )
-                }
-
-                if (showConflictConfirm) {
-                    ConflictImportConfirmDialog(
-                        conflictCourseCount = conflictCourseCount,
-                        onDismiss = { showConflictConfirm = false },
-                        onConfirm = {
-                            showConflictConfirm = false
-                            startImport(normalizedCourses)
-                        }
-                    )
-                }
             }
         }
     }
 }
 
-@Composable
-private fun EditCourseDialog(
-    source: Course,
-    onDismiss: () -> Unit,
-    onSave: (Course) -> Unit
-) {
-    var name by remember { mutableStateOf(source.name) }
-    var teacher by remember { mutableStateOf(source.teacher) }
-    var position by remember { mutableStateOf(source.position) }
-    var dayText by remember { mutableStateOf(source.day.toString()) }
-    var sections by remember { mutableStateOf(source.sections) }
-    var weeks by remember { mutableStateOf(source.weeks) }
-    var error by remember { mutableStateOf("") }
+private fun showEditCourseDialog(context: Activity, source: Course, onSave: (Course) -> Unit) {
+    lateinit var nameEt: EditText
+    lateinit var teacherEt: EditText
+    lateinit var positionEt: EditText
+    lateinit var dayEt: EditText
+    lateinit var sectionsEt: EditText
+    lateinit var weeksEt: EditText
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .shadow(8.dp, RoundedCornerShape(16.dp))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("编辑课程", fontSize = 16.sp)
-                Spacer(Modifier.height(8.dp))
-                TextField(value = name, onValueChange = { name = it }, label = "课程名")
-                Spacer(Modifier.height(6.dp))
-                TextField(value = teacher, onValueChange = { teacher = it }, label = "教师")
-                Spacer(Modifier.height(6.dp))
-                TextField(value = position, onValueChange = { position = it }, label = "地点")
-                Spacer(Modifier.height(6.dp))
-                TextField(value = dayText, onValueChange = { dayText = it }, label = "星期(1-7)")
-                Spacer(Modifier.height(6.dp))
-                TextField(value = sections, onValueChange = { sections = it }, label = "节次")
-                Spacer(Modifier.height(6.dp))
-                TextField(value = weeks, onValueChange = { weeks = it }, label = "周次")
-                if (error.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(error, color = Color(0xFFE53935), fontSize = 12.sp)
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(text = "取消", onClick = onDismiss)
-                    Spacer(Modifier.weight(1f))
-                    TextButton(text = "保存", onClick = {
-                        val day = dayText.trim().toIntOrNull()
-                        if (day == null) {
-                            error = "星期必须是数字"
-                            return@TextButton
-                        }
-                        val edited = source.copyCourse().apply {
-                            this.name = name.trim()
-                            this.teacher = teacher.trim()
-                            this.position = position.trim()
-                            this.day = day
-                            this.sections = sections.trim()
-                            this.weeks = weeks.trim()
-                            sanitizeAndValidate()
-                        }
-                        if (edited.isInvalid) {
-                            error = edited.invalidReason
-                            return@TextButton
-                        }
-                        onSave(edited)
-                    })
-                }
+    MessageDialog.build()
+        .setTitle("编辑课程")
+        .setMessage("")
+        .setCustomView(object : OnBindView<MessageDialog>(R.layout.dialog_edit_course) {
+            override fun onBind(dialog: MessageDialog, v: View) {
+                nameEt = v.findViewById(R.id.etCourseName)
+                teacherEt = v.findViewById(R.id.etTeacher)
+                positionEt = v.findViewById(R.id.etPosition)
+                dayEt = v.findViewById(R.id.etDay)
+                sectionsEt = v.findViewById(R.id.etSections)
+                weeksEt = v.findViewById(R.id.etWeeks)
+
+                nameEt.setText(source.name)
+                teacherEt.setText(source.teacher)
+                positionEt.setText(source.position)
+                dayEt.setText(source.day.toString())
+                sectionsEt.setText(source.sections)
+                weeksEt.setText(source.weeks)
             }
-        }
-    }
+        })
+        .setCancelButton("取消")
+        .setOkButton("保存", object : com.kongzue.dialogx.interfaces.OnDialogButtonClickListener<MessageDialog> {
+            override fun onClick(dialog: MessageDialog, v: View): Boolean {
+                val day = dayEt.text?.toString()?.trim()?.toIntOrNull()
+                if (day == null) {
+                    TipDialog.show("星期必须是数字")
+                    return true
+                }
+
+                val edited = source.copyCourse().apply {
+                    name = nameEt.text?.toString()?.trim().orEmpty()
+                    teacher = teacherEt.text?.toString()?.trim().orEmpty()
+                    position = positionEt.text?.toString()?.trim().orEmpty()
+                    this.day = day
+                    sections = sectionsEt.text?.toString()?.trim().orEmpty()
+                    weeks = weeksEt.text?.toString()?.trim().orEmpty()
+                    sanitizeAndValidate()
+                }
+                if (edited.isInvalid) {
+                    TipDialog.show(edited.invalidReason)
+                    return true
+                }
+                onSave(edited)
+                return false
+            }
+        })
+        .show(context)
 }
 
-@Composable
-private fun ConflictImportConfirmDialog(
+private fun showConflictImportConfirmDialog(
+    context: Activity,
     conflictCourseCount: Int,
-    onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .shadow(8.dp, RoundedCornerShape(16.dp))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("冲突提醒", fontSize = 16.sp)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "检测到 $conflictCourseCount 门课程存在时间冲突，建议先编辑修正。仍要继续导入吗？",
-                    color = Color(0xFFE53935),
-                    fontSize = 13.sp
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(text = "取消", onClick = onDismiss)
-                    Spacer(Modifier.weight(1f))
-                    TextButton(text = "继续导入", onClick = onConfirm)
-                }
+    MessageDialog.build()
+        .setTitle("冲突提醒")
+        .setMessage("检测到 $conflictCourseCount 门课程存在时间冲突，建议先编辑修正。仍要继续导入吗？")
+        .setCancelButton("取消")
+        .setOkButton("继续导入", object : com.kongzue.dialogx.interfaces.OnDialogButtonClickListener<MessageDialog> {
+            override fun onClick(dialog: MessageDialog, v: View): Boolean {
+                onConfirm()
+                return false
             }
-        }
-    }
+        })
+        .show(context)
 }
 
 private fun Course.copyCourse(): Course {
