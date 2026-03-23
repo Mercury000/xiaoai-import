@@ -60,23 +60,53 @@ class CoursePreviewScreen : BaseActivity() {
                 val initialName = intent.readPreviewTableName().ifBlank { "提取课表" }
                 val initialCourses = intent.readPreviewCourses()
                 val initialSchedule = intent.readPreviewSchedule()
+
                 val courses = remember { mutableStateListOf<Course>().apply { addAll(initialCourses) } }
-                val sortedCourses = courses.sortedWith(
-                    compareBy<Course>(
-                        { it.day },
-                        { parseStartNumber(it.sections) },
-                        { parseStartNumber(it.weeks) }
+                val normalizedCourses = courses.map { it.copyCourse() }
+                val conflictMap = buildConflictMap(normalizedCourses)
+                val conflictCourseCount = conflictMap.size
+                val invalidCount = normalizedCourses.count { it.isInvalid }
+                val autoCorrectCount = normalizedCourses.count { it.isAutoCorrected }
+                val displayIndexes = courses.indices.sortedWith(
+                    compareBy<Int>(
+                        { normalizedCourses[it].day },
+                        { parseStartNumber(normalizedCourses[it].sections) },
+                        { parseStartNumber(normalizedCourses[it].weeks) }
                     )
                 )
+
                 var tableName by remember { mutableStateOf(initialName) }
                 var importing by remember { mutableStateOf(false) }
                 var message by remember { mutableStateOf("") }
                 var editingIndex by remember { mutableStateOf<Int?>(null) }
+                var showConflictConfirm by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
 
-                Scaffold(
-                    topBar = { SmallTopAppBar(title = "课程预览") }
-                ) { padding ->
+                fun startImport(finalCourses: List<Course>) {
+                    importing = true
+                    message = "正在导入..."
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                CourseRepository.importCourses(
+                                    this@CoursePreviewScreen,
+                                    HostCompat.getAppId(),
+                                    tableName.trim(),
+                                    finalCourses.map { it.copyCourse() },
+                                    initialSchedule
+                                )
+                            }
+                            message = "导入成功"
+                            finish()
+                        } catch (e: Exception) {
+                            message = "失败: ${e.message}"
+                        } finally {
+                            importing = false
+                        }
+                    }
+                }
+
+                Scaffold(topBar = { SmallTopAppBar(title = "课程预览") }) { padding ->
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -91,28 +121,78 @@ class CoursePreviewScreen : BaseActivity() {
                         )
                         Spacer(Modifier.height(8.dp))
 
+                        if (invalidCount > 0) {
+                            Text(
+                                "检测到 $invalidCount 门课程格式不合法，已标红，请先修正。",
+                                color = Color(0xFFE53935),
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        if (conflictCourseCount > 0) {
+                            Text(
+                                "检测到 $conflictCourseCount 门课程存在时间冲突，请检查，冲突课程无法导入。",
+                                color = Color(0xFFE53935),
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        if (autoCorrectCount > 0) {
+                            Text(
+                                "已自动纠正规范化 $autoCorrectCount 门课程的节次/周次，请确认结果。",
+                                color = MiuixTheme.colorScheme.primary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+
                         LazyColumn(
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(bottom = 12.dp)
                         ) {
-                            items(sortedCourses) { c ->
+                            items(displayIndexes) { index ->
+                                val source = courses[index]
+                                val normalized = normalizedCourses[index]
+                                val conflictNames = conflictMap[index]
+                                val highlight = normalized.isInvalid || conflictNames != null
+
                                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(c.name.ifBlank { "(未命名课程)" }, fontSize = 16.sp)
+                                    Column(
+                                        modifier = Modifier
+                                            .padding(12.dp)
+                                    ) {
+                                        Text(source.name.ifBlank { "(未命名课程)" }, fontSize = 16.sp)
                                         Text(
-                                            "周${c.day}  第${c.sections}节  周次:${c.weeks}",
+                                            "周${normalized.day}  第${normalized.sections}节  周次:${normalized.weeks}",
                                             fontSize = 12.sp,
-                                            color = MiuixTheme.colorScheme.onSurface
+                                            color = if (highlight) Color(0xFFE53935) else MiuixTheme.colorScheme.onSurface
                                         )
-                                        if (c.teacher.isNotBlank() || c.position.isNotBlank()) {
+                                        if (source.teacher.isNotBlank() || source.position.isNotBlank()) {
                                             Text(
-                                                "${c.teacher} ${c.position}".trim(),
+                                                "${source.teacher} ${source.position}".trim(),
                                                 fontSize = 12.sp,
                                                 color = MiuixTheme.colorScheme.onSurface
                                             )
                                         }
-                                        if (c.isInvalid) {
-                                            Text(c.invalidReason, color = Color(0xFFE53935), fontSize = 11.sp)
+                                        if (normalized.isInvalid) {
+                                            Text(
+                                                "错误: ${normalized.invalidReason}",
+                                                color = Color(0xFFE53935),
+                                                fontSize = 11.sp
+                                            )
+                                        } else if (normalized.isAutoCorrected && normalized.autoCorrectedReason.isNotBlank()) {
+                                            Text(
+                                                "已纠正: ${normalized.autoCorrectedReason}",
+                                                color = Color(0xFFD97B00),
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        if (conflictNames != null) {
+                                            Text(
+                                                "冲突课程: $conflictNames",
+                                                color = Color(0xFFE53935),
+                                                fontSize = 11.sp
+                                            )
                                         }
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -121,27 +201,27 @@ class CoursePreviewScreen : BaseActivity() {
                                             Text(
                                                 text = "编辑",
                                                 fontSize = 12.sp,
-                                                color = MiuixTheme.colorScheme.primary,
+                                                color = Color(0xFF1565C0),
                                                 modifier = Modifier
                                                     .background(
-                                                        color = MiuixTheme.colorScheme.surfaceVariant,
-                                                        shape = RoundedCornerShape(8.dp)
+                                                        color = Color(0xFFE3F2FD),
+                                                        shape = RoundedCornerShape(999.dp)
                                                     )
-                                                    .clickable { editingIndex = courses.indexOf(c).takeIf { it >= 0 } }
-                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                                    .clickable { editingIndex = index }
+                                                    .padding(horizontal = 12.dp, vertical = 6.dp)
                                             )
                                             Spacer(Modifier.width(8.dp))
                                             Text(
                                                 text = "删除",
                                                 fontSize = 12.sp,
-                                                color = Color(0xFFE53935),
+                                                color = Color(0xFFC62828),
                                                 modifier = Modifier
                                                     .background(
-                                                        color = MiuixTheme.colorScheme.surfaceVariant,
-                                                        shape = RoundedCornerShape(8.dp)
+                                                        color = Color(0xFFFFEBEE),
+                                                        shape = RoundedCornerShape(999.dp)
                                                     )
-                                                    .clickable { courses.remove(c) }
-                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                                    .clickable { courses.removeAt(index) }
+                                                    .padding(horizontal = 12.dp, vertical = 6.dp)
                                             )
                                         }
                                     }
@@ -172,32 +252,15 @@ class CoursePreviewScreen : BaseActivity() {
                                     message = "失败: 课程列表为空"
                                     return@Button
                                 }
-                                if (courses.any { it.isInvalid }) {
+                                if (invalidCount > 0) {
                                     message = "失败: 请先修正标红课程"
                                     return@Button
                                 }
-                                importing = true
-                                message = "正在导入..."
-                                val finalCourses = courses.map { it.copyCourse() }
-                                scope.launch {
-                                    try {
-                                        withContext(Dispatchers.IO) {
-                                            CourseRepository.importCourses(
-                                                this@CoursePreviewScreen,
-                                                HostCompat.getAppId(),
-                                                name,
-                                                finalCourses,
-                                                initialSchedule
-                                            )
-                                        }
-                                        message = "导入成功"
-                                        finish()
-                                    } catch (e: Exception) {
-                                        message = "失败: ${e.message}"
-                                    } finally {
-                                        importing = false
-                                    }
+                                if (conflictCourseCount > 0) {
+                                    showConflictConfirm = true
+                                    return@Button
                                 }
+                                startImport(normalizedCourses)
                             }
                         ) {
                             if (importing) {
@@ -218,6 +281,17 @@ class CoursePreviewScreen : BaseActivity() {
                         onSave = { edited ->
                             courses[idx] = edited
                             editingIndex = null
+                        }
+                    )
+                }
+
+                if (showConflictConfirm) {
+                    ConflictImportConfirmDialog(
+                        conflictCourseCount = conflictCourseCount,
+                        onDismiss = { showConflictConfirm = false },
+                        onConfirm = {
+                            showConflictConfirm = false
+                            startImport(normalizedCourses)
                         }
                     )
                 }
@@ -275,7 +349,7 @@ private fun EditCourseDialog(
                             error = "星期必须是数字"
                             return@TextButton
                         }
-                        val c = source.copyCourse().apply {
+                        val edited = source.copyCourse().apply {
                             this.name = name.trim()
                             this.teacher = teacher.trim()
                             this.position = position.trim()
@@ -284,12 +358,44 @@ private fun EditCourseDialog(
                             this.weeks = weeks.trim()
                             sanitizeAndValidate()
                         }
-                        if (c.isInvalid) {
-                            error = c.invalidReason
+                        if (edited.isInvalid) {
+                            error = edited.invalidReason
                             return@TextButton
                         }
-                        onSave(c)
+                        onSave(edited)
                     })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConflictImportConfirmDialog(
+    conflictCourseCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .shadow(8.dp, RoundedCornerShape(16.dp))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("冲突提醒", fontSize = 16.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "检测到 $conflictCourseCount 门课程存在时间冲突，建议先编辑修正。仍要继续导入吗？",
+                    color = Color(0xFFE53935),
+                    fontSize = 13.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(text = "取消", onClick = onDismiss)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(text = "继续导入", onClick = onConfirm)
                 }
             }
         }
@@ -307,6 +413,37 @@ private fun Course.copyCourse(): Course {
         c.style = style
         c.sanitizeAndValidate()
     }
+}
+
+private fun buildConflictMap(courses: List<Course>): Map<Int, String> {
+    val indexToNames = mutableMapOf<Int, MutableSet<String>>()
+    for (i in courses.indices) {
+        val left = courses[i]
+        if (left.isInvalid) continue
+        for (j in i + 1 until courses.size) {
+            val right = courses[j]
+            if (right.isInvalid) continue
+            if (left.day != right.day) continue
+            if (!hasIntersection(parseNumberSet(left.sections), parseNumberSet(right.sections))) continue
+            if (!hasIntersection(parseNumberSet(left.weeks), parseNumberSet(right.weeks))) continue
+            indexToNames.getOrPut(i) { linkedSetOf() }.add(right.name.ifBlank { "未命名课程" })
+            indexToNames.getOrPut(j) { linkedSetOf() }.add(left.name.ifBlank { "未命名课程" })
+        }
+    }
+    return indexToNames.mapValues { entry -> entry.value.joinToString("、") }
+}
+
+private fun parseNumberSet(value: String): Set<Int> {
+    return value.split(",")
+        .mapNotNull { it.trim().toIntOrNull() }
+        .toSet()
+}
+
+private fun hasIntersection(left: Set<Int>, right: Set<Int>): Boolean {
+    if (left.isEmpty() || right.isEmpty()) return false
+    val smaller = if (left.size <= right.size) left else right
+    val larger = if (left.size <= right.size) right else left
+    return smaller.any { it in larger }
 }
 
 private fun parseStartNumber(value: String): Int {
