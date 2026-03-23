@@ -324,7 +324,7 @@ class JwSystemScreen : BaseActivity() {
     private fun buildBuiltinImportItems(): List<JwItem> {
         return listOf(
             JwItem(
-                name = "Json导入",
+                name = "JSON导入",
                 type = JwType.COMMON,
                 extra = "__json_import__",
                 isCommon = true,

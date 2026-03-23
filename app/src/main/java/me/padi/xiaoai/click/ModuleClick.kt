@@ -12,8 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.padi.xiaoai.ApiClient.COLOR_PRESETS
 import me.padi.xiaoai.Course
-import me.padi.xiaoai.CourseRepository
-import me.padi.xiaoai.HostCompat
+import me.padi.xiaoai.openCoursePreviewScreen
 import me.padi.xiaoai.ScheduleConfig
 import me.padi.xiaoai.proxyActivity
 import me.padi.xiaoai.screen.AiScreen
@@ -87,27 +86,12 @@ fun openJsonImportDialog(context: Context) {
                         if (sObj.has("sections")) sections = sObj.optString("sections")
                     }
                 }
-
-                val namePrompt = InputDialog.show("课表名称", "请输入课表名称", "确定", "取消")
-                namePrompt.setOkButton { _, _, nameInput ->
-                    val tableName = nameInput.trim()
-                    if (tableName.isBlank()) return@setOkButton false
-
-                    CoroutineScope(Dispatchers.Main).launch {
-                        try {
-                            WaitDialog.show("正在导入...")
-                            val appId = HostCompat.getAppId()
-                            CourseRepository.importCourses(context, appId, tableName, courses, schedule)
-                            WaitDialog.dismiss()
-                            TipDialog.show("导入成功")
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            WaitDialog.dismiss()
-                            TipDialog.show("失败: ${e.message}", WaitDialog.TYPE.ERROR)
-                        }
-                    }
-                    false
-                }.show()
+                val parsedName = json.optString("name").trim()
+                context.openCoursePreviewScreen(
+                    tableName = if (parsedName.isBlank()) "提取课表" else parsedName,
+                    courses = courses,
+                    schedule = schedule
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
                 WaitDialog.dismiss()

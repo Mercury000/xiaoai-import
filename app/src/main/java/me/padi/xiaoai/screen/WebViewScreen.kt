@@ -59,7 +59,7 @@ import me.padi.xiaoai.BridgeCallback
 import me.padi.xiaoai.Course
 import me.padi.xiaoai.PromptDialogData
 import me.padi.xiaoai.SingleSelectionDialogData
-import me.padi.xiaoai.CourseRepository
+import me.padi.xiaoai.openCoursePreviewScreen
 import me.padi.xiaoai.ScheduleConfig
 import org.json.JSONArray
 import org.json.JSONObject
@@ -357,7 +357,6 @@ private fun WebViewScreenContent(intent: Intent) {
         Log.d("WebViewScreen", "开始 processHtmlForAi, html 长度: ${html.length}")
         coroutineScope.launch {
             try {
-                val appId = HostCompat.getAppId()
                 val serviceToken = HostCompat.getAccessToken(context)
                 val deviceId = HostCompat.getDeviceId(context)
                 if (serviceToken == null || deviceId == null) {
@@ -378,9 +377,13 @@ private fun WebViewScreenContent(intent: Intent) {
                             override fun onSuccess(result: ParseResult) {
                                 coroutineScope.launch {
                                     try {
-                                        importState = ImportState.Parsing()
-                                        CourseRepository.importCourses(context, appId, tableName.ifBlank { "提取课表" }.trim(), result.courses)
-                                        importState = ImportState.Success("AI解析并导入成功")
+                                        val previewName = tableName.ifBlank { "提取课表" }.trim()
+                                        context.openCoursePreviewScreen(
+                                            tableName = previewName,
+                                            courses = result.courses,
+                                            schedule = result.schedule
+                                        )
+                                        importState = ImportState.Success("已进入预览，请确认导入")
                                     } catch (e: Exception) {
                                         importState = ImportState.Error(e.message ?: "导入失败")
                                     }
@@ -481,12 +484,15 @@ private fun WebViewScreenContent(intent: Intent) {
                             }
                         }
 
-                        val appId = HostCompat.getAppId()
-                        CourseRepository.importCourses(context, appId, tableName.ifBlank { "提取课表" }, courses, schedule)
+                        val previewName = tableName.ifBlank { "提取课表" }.trim()
+                        context.openCoursePreviewScreen(
+                            tableName = previewName,
+                            courses = courses,
+                            schedule = schedule
+                        )
                         
                         withContext(Dispatchers.Main) {
-                            importState = ImportState.Success("完成！已导入至 $tableName")
-                            HostCompat.isImportFinished = true
+                            importState = ImportState.Success("已进入预览，请确认导入")
                             callback(true, null)
                         }
                     } catch (e: Exception) {
