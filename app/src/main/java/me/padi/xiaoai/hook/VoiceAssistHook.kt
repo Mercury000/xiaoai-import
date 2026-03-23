@@ -31,22 +31,17 @@ object VoiceAssistHook : YukiBaseHooker() {
                 HostCompat.hostLoader = loader
                 lsp("Application.attach hooked, hostLoader saved")
                 val processName = currentProcessName(context)
-                val isMainProcess = processName == context.packageName
-                lsp("process=$processName, main=$isMainProcess")
+                lsp("process=$processName")
 
-                val hostVersion = try {
-                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                } catch (e: Exception) {
-                    "unknown"
-                } ?: "unknown"
+                val hostVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName
                 val sourceDir = context.applicationInfo.sourceDir
                 lsp("host=${context.packageName}, version=$hostVersion")
 
-                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "token_class") {
+                SmaliAnalyzer.getOrResolveClass(context, "token_class") {
                     SmaliAnalyzer.findTokenClass(context, sourceDir)
                 }
 
-                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "device_class") {
+                SmaliAnalyzer.getOrResolveClass(context, "device_class") {
                     SmaliAnalyzer.findDeviceClass(context, sourceDir)
                 }
 

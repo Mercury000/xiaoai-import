@@ -12,25 +12,21 @@ import top.sacz.xphelper.XpHelper
 object WebViewHook : YukiBaseHooker() {
     private var cachedToolsJs: String? = null
 
-    private fun readRawText(context: Context, @RawRes resId: Int): String? {
-        return try {
-            context.resources.openRawResource(resId).bufferedReader().use { it.readText() }
-        } catch (_: Exception) {
-            null
-        }
+    private fun readRawText(context: Context, @RawRes resId: Int): String {
+        return context.resources.openRawResource(resId).bufferedReader().use { it.readText() }
     }
 
-    private fun injectJs(view: Any?, url: String) {
-        val webView = view as? WebView ?: return
+    private fun injectJs(view: Any, url: String) {
+        val webView = view as WebView
         if (!url.contains("ai-schedule")) return
-        try {
-            if (cachedToolsJs == null) {
-                cachedToolsJs = readRawText(webView.context, R.raw.tools) ?: ""
-            }
-            cachedToolsJs?.let { if (it.isNotBlank()) webView.evaluateJavascript(it, null) }
-            webView.evaluateJavascript(ENTRY_POINT_SCRIPT, null)
-        } catch (_: Throwable) {
+        if (cachedToolsJs == null) {
+            cachedToolsJs = readRawText(webView.context, R.raw.tools)
         }
+        val toolsJs = cachedToolsJs ?: error("tools.js load failed")
+        if (toolsJs.isNotBlank()) {
+            webView.evaluateJavascript(toolsJs, null)
+        }
+        webView.evaluateJavascript(ENTRY_POINT_SCRIPT, null)
     }
 
     override fun onHook() {
@@ -39,32 +35,34 @@ object WebViewHook : YukiBaseHooker() {
             parameterCount = 1
         }.hook {
             after {
-                val loader = (args[0] as? Context)?.classLoader ?: return@after
+                val loader = (args[0] as Context).classLoader
 
-                try {
-                    val commonWebViewClass = loader.loadClass("com.xiaomi.voiceassistant.commonweb.CommonWebView")
-                    commonWebViewClass.resolve().firstConstructor { parameterCount = 1 }.hook {
-                        after {
-                            val webView = instance<WebView>()
-                            XpHelper.injectResourcesToContext(webView.context)
-                            webView.addJavascriptInterface(WebAppInterface(webView.context), "Android")
-                        }
+                val commonWebViewClass = loader.loadClass("com.xiaomi.voiceassistant.commonweb.CommonWebView")
+                commonWebViewClass.resolve().firstConstructor { parameterCount = 1 }.hook {
+                    after {
+                        val webView = instance<WebView>()
+                        XpHelper.injectResourcesToContext(webView.context)
+                        webView.addJavascriptInterface(WebAppInterface(webView.context), "Android")
                     }
-                } catch (_: Throwable) {
                 }
 
-                try {
-                    val webViewClientClass = loader.loadClass("android.webkit.WebViewClient")
-                    webViewClientClass.resolve().firstMethod {
-                        name = "onPageFinished"
-                        parameters(WebView::class.java, String::class.java)
-                    }.hook { after { injectJs(args[0], args[1] as? String ?: "") } }
+                val webViewClientClass = loader.loadClass("android.webkit.WebViewClient")
+                webViewClientClass.resolve().firstMethod {
+                    name = "onPageFinished"
+                    parameters(WebView::class.java, String::class.java)
+                }.hook {
+                    after {
+                        injectJs(args[0]!!, args[1] as String)
+                    }
+                }
 
-                    webViewClientClass.resolve().firstMethod {
-                        name = "doUpdateVisitedHistory"
-                        parameters(WebView::class.java, String::class.java, java.lang.Boolean.TYPE)
-                    }.hook { after { injectJs(args[0], args[1] as? String ?: "") } }
-                } catch (_: Throwable) {
+                webViewClientClass.resolve().firstMethod {
+                    name = "doUpdateVisitedHistory"
+                    parameters(WebView::class.java, String::class.java, java.lang.Boolean.TYPE)
+                }.hook {
+                    after {
+                        injectJs(args[0]!!, args[1] as String)
+                    }
                 }
             }
         }

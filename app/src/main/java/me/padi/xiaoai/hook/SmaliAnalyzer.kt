@@ -11,54 +11,29 @@ import java.util.zip.ZipFile
 
 object SmaliAnalyzer {
     private const val TAG = "SmaliAnalyzer"
-    private const val PREFS_NAME = "hook_cache"
     @Volatile
     private var dexKitLoaded = false
     private fun lsp(msg: String) = XposedBridge.log("[$TAG] $msg")
 
     fun getOrResolveClass(
         context: Context,
-        hostVersion: String,
         key: String,
-        resolver: (ClassLoader) -> String?
-    ): String? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val cachedVersion = prefs.getString("host_version", "")
-
-        if (cachedVersion == hostVersion) {
-            val cachedName = prefs.getString(key, null)
-            if (!cachedName.isNullOrBlank()) {
-                lsp("cache hit: key=$key -> $cachedName (version=$hostVersion)")
-                return cachedName
-            }
-        }
-
-        lsp("cache miss: key=$key (version=$hostVersion), start DexKit resolve")
+        resolver: (ClassLoader) -> String
+    ): String {
+        val prefs = context.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)
+        lsp("resolve class: key=$key")
         val resolvedName = resolver(context.classLoader)
-
-        if (!resolvedName.isNullOrBlank()) {
-            prefs.edit().apply {
-                putString("host_version", hostVersion)
-                putString(key, resolvedName)
-                apply()
-            }
-            lsp("resolved and cached: key=$key -> $resolvedName")
-        } else {
-            lsp("resolve failed: key=$key (version=$hostVersion)")
-        }
+        prefs.edit().putString(key, resolvedName).apply()
+        lsp("resolved: key=$key -> $resolvedName")
         return resolvedName
     }
 
-    fun findTokenClass(context: Context, sourceDir: String): String? {
+    fun findTokenClass(context: Context, sourceDir: String): String {
         return findClassByDexKit(context, sourceDir, listOf("token"))
     }
 
-    fun findDeviceClass(context: Context, sourceDir: String): String? {
+    fun findDeviceClass(context: Context, sourceDir: String): String {
         return findClassByDexKit(context, sourceDir, listOf("device"))
-    }
-
-    fun findWebViewHelperClass(context: Context, sourceDir: String): String? {
-        return findClassByDexKit(context, sourceDir, listOf("webview"))
     }
 
     private fun ensureDexKitLoaded(context: Context) {
@@ -94,65 +69,41 @@ object SmaliAnalyzer {
         }
     }
 
-    private fun findClassByDexKit(context: Context, sourceDir: String, targets: List<String>): String? {
-        return try {
-            ensureDexKitLoaded(context)
-            lsp("DexKit open: targets=$targets")
-            val bridge = DexKitBridge.create(sourceDir)
-            try {
-                when {
-                    targets.contains("token") -> {
-                        val result = bridge.findClass {
-                            matcher {
-                                methods {
-                                    add {
-                                        name = "getOauthV2AccessToken"
-                                        paramTypes("boolean")
-                                    }
-                                }
-                                usingStrings("EngineAuthHelper", "access_token:")
+    private fun findClassByDexKit(context: Context, sourceDir: String, targets: List<String>): String {
+        ensureDexKitLoaded(context)
+        lsp("DexKit open: targets=$targets")
+        val bridge = DexKitBridge.create(sourceDir)
+        try {
+            return when {
+                targets.contains("token") -> bridge.findClass {
+                    matcher {
+                        methods {
+                            add {
+                                name = "getOauthV2AccessToken"
+                                paramTypes("boolean")
                             }
-                        }.firstOrNull()?.name
-                        lsp("DexKit token result: ${result ?: "null"}")
-                        result
+                        }
+                        usingStrings("EngineAuthHelper", "access_token:")
                     }
+                }.firstOrNull()?.name ?: error("DexKit token class not found")
 
-                    targets.contains("device") -> {
-                        val result = bridge.findClass {
-                            matcher {
-                                methods {
-                                    add {
-                                        name = "getDeviceId"
-                                        paramTypes("android.content.Context")
-                                    }
-                                }
-                                usingStrings("DeviceUtils")
+                targets.contains("device") -> bridge.findClass {
+                    matcher {
+                        methods {
+                            add {
+                                name = "getDeviceId"
+                                paramTypes("android.content.Context")
                             }
-                        }.firstOrNull()?.name
-                        lsp("DexKit device result: ${result ?: "null"}")
-                        result
+                        }
+                        usingStrings("DeviceUtils")
                     }
+                }.firstOrNull()?.name ?: error("DexKit device class not found")
 
-                    targets.contains("webview") -> {
-                        val result = bridge.findClass {
-                            matcher {
-                                usingStrings("V5Widget:TimeTableRender")
-                            }
-                        }.firstOrNull()?.name
-                        lsp("DexKit webview result: ${result ?: "null"}")
-                        result
-                    }
-
-                    else -> null
-                }
-            } finally {
-                bridge.close()
-                lsp("DexKit closed: targets=$targets")
+                else -> error("Unsupported targets: $targets")
             }
-        } catch (e: Throwable) {
-            lsp("DexKit lookup failed: ${e.message}")
-            XposedBridge.log(e)
-            null
+        } finally {
+            bridge.close()
+            lsp("DexKit closed: targets=$targets")
         }
     }
 }
