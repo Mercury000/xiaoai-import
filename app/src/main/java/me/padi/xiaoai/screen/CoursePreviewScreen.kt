@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,6 +61,13 @@ class CoursePreviewScreen : BaseActivity() {
                 val initialCourses = intent.readPreviewCourses()
                 val initialSchedule = intent.readPreviewSchedule()
                 val courses = remember { mutableStateListOf<Course>().apply { addAll(initialCourses) } }
+                val sortedCourses = courses.sortedWith(
+                    compareBy<Course>(
+                        { it.day },
+                        { parseStartNumber(it.sections) },
+                        { parseStartNumber(it.weeks) }
+                    )
+                )
                 var tableName by remember { mutableStateOf(initialName) }
                 var importing by remember { mutableStateOf(false) }
                 var message by remember { mutableStateOf("") }
@@ -88,7 +95,7 @@ class CoursePreviewScreen : BaseActivity() {
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(bottom = 12.dp)
                         ) {
-                            itemsIndexed(courses) { index, c ->
+                            items(sortedCourses) { c ->
                                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                     Column(modifier = Modifier.padding(12.dp)) {
                                         Text(c.name.ifBlank { "(未命名课程)" }, fontSize = 16.sp)
@@ -120,7 +127,7 @@ class CoursePreviewScreen : BaseActivity() {
                                                         color = MiuixTheme.colorScheme.surfaceVariant,
                                                         shape = RoundedCornerShape(8.dp)
                                                     )
-                                                    .clickable { editingIndex = index }
+                                                    .clickable { editingIndex = courses.indexOf(c).takeIf { it >= 0 } }
                                                     .padding(horizontal = 10.dp, vertical = 5.dp)
                                             )
                                             Spacer(Modifier.width(8.dp))
@@ -133,7 +140,7 @@ class CoursePreviewScreen : BaseActivity() {
                                                         color = MiuixTheme.colorScheme.surfaceVariant,
                                                         shape = RoundedCornerShape(8.dp)
                                                     )
-                                                    .clickable { courses.removeAt(index) }
+                                                    .clickable { courses.remove(c) }
                                                     .padding(horizontal = 10.dp, vertical = 5.dp)
                                             )
                                         }
@@ -302,3 +309,10 @@ private fun Course.copyCourse(): Course {
     }
 }
 
+private fun parseStartNumber(value: String): Int {
+    return Regex("\\d+")
+        .find(value)
+        ?.value
+        ?.toIntOrNull()
+        ?: Int.MAX_VALUE
+}
