@@ -163,7 +163,7 @@ class CoursePreviewScreen : BaseActivity() {
                                     ) {
                                         Text(source.name.ifBlank { "(未命名课程)" }, fontSize = 16.sp)
                                         Text(
-                                            "周${normalized.day}  第${normalized.sections}节  周次:${normalized.weeks}",
+                                            "${dayLabel(normalized.day)}  第${normalized.sections}节  周次:${normalized.weeks}",
                                             fontSize = 12.sp,
                                             color = if (highlight) Color(0xFFE53935) else MiuixTheme.colorScheme.onSurface
                                         )
@@ -452,4 +452,17 @@ private fun parseStartNumber(value: String): Int {
         ?.value
         ?.toIntOrNull()
         ?: Int.MAX_VALUE
+}
+
+private fun dayLabel(day: Int): String {
+    return when (day) {
+        1 -> "星期一"
+        2 -> "星期二"
+        3 -> "星期三"
+        4 -> "星期四"
+        5 -> "星期五"
+        6 -> "星期六"
+        7 -> "星期日"
+        else -> "星期$day"
+    }
 }
