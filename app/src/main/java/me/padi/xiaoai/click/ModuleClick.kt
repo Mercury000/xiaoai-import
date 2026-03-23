@@ -34,15 +34,17 @@ fun openAiImportScreen(context: Context) {
 }
 
 fun openJsonImportDialog(context: Context) {
-    val prompt = InputDialog.show("Json导入", "请粘贴符合规范的 Json 数据", "确定", "取消")
+    val prompt = InputDialog.show("JSON导入", "请粘贴符合规范的 JSON 数据", "确定", "取消")
     prompt.setOkButton { _, _, content ->
-        if (content.isBlank()) return@setOkButton false
+        val jsonContent = content.trim()
+        if (jsonContent.isBlank()) return@setOkButton false
+
         CoroutineScope(Dispatchers.Main).launch {
             try {
                 val json = try {
-                    JSONObject(content)
-                } catch (e: Exception) {
-                    JSONObject().put("courses", JSONArray(content))
+                    JSONObject(jsonContent)
+                } catch (_: Exception) {
+                    JSONObject().put("courses", JSONArray(jsonContent))
                 }
 
                 val courseArray = json.optJSONArray("courses") ?: JSONArray()
@@ -86,12 +88,26 @@ fun openJsonImportDialog(context: Context) {
                     }
                 }
 
-                WaitDialog.show("正在导入...")
-                val appId = HostCompat.getAppId()
-                val name = json.optString("name", "Json导入").ifBlank { "Json导入" }
-                CourseRepository.importCourses(context, appId, name, courses, schedule)
-                WaitDialog.dismiss()
-                TipDialog.show("导入成功")
+                val namePrompt = InputDialog.show("课表名称", "请输入课表名称", "确定", "取消")
+                namePrompt.setOkButton { _, _, nameInput ->
+                    val tableName = nameInput.trim()
+                    if (tableName.isBlank()) return@setOkButton false
+
+                    CoroutineScope(Dispatchers.Main).launch {
+                        try {
+                            WaitDialog.show("正在导入...")
+                            val appId = HostCompat.getAppId()
+                            CourseRepository.importCourses(context, appId, tableName, courses, schedule)
+                            WaitDialog.dismiss()
+                            TipDialog.show("导入成功")
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            WaitDialog.dismiss()
+                            TipDialog.show("失败: ${e.message}", WaitDialog.TYPE.ERROR)
+                        }
+                    }
+                    false
+                }.show()
             } catch (e: Exception) {
                 e.printStackTrace()
                 WaitDialog.dismiss()
@@ -108,7 +124,7 @@ fun openContributorQQ(context: Context, uin: String) {
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
         context.startActivity(intent)
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         Toast.makeText(context, "未找到QQ", Toast.LENGTH_SHORT).show()
     }
 }
