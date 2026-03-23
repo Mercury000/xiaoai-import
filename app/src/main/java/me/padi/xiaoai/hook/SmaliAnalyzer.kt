@@ -11,19 +11,45 @@ import java.util.zip.ZipFile
 
 object SmaliAnalyzer {
     private const val TAG = "SmaliAnalyzer"
+    private const val PREFS_NAME = "hook_cache"
+    private val VALID_CACHE_KEYS = setOf("host_version", "token_class", "device_class")
     @Volatile
     private var dexKitLoaded = false
     private fun lsp(msg: String) = XposedBridge.log("[$TAG] $msg")
 
+    private fun enforceCacheWhitelist(prefs: android.content.SharedPreferences) {
+        val staleKeys = prefs.all.keys - VALID_CACHE_KEYS
+        if (staleKeys.isNotEmpty()) {
+            val editor = prefs.edit()
+            staleKeys.forEach { editor.remove(it) }
+            editor.apply()
+            lsp("cache whitelist cleanup: removed=$staleKeys")
+        }
+    }
+
     fun getOrResolveClass(
         context: Context,
+        hostVersion: String,
         key: String,
         resolver: (ClassLoader) -> String
     ): String {
-        val prefs = context.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)
+        require(key in VALID_CACHE_KEYS) { "Unsupported cache key: $key" }
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        enforceCacheWhitelist(prefs)
+        val cachedHostVersion = prefs.getString("host_version", null)
+        if (cachedHostVersion == hostVersion) {
+            val cachedName = prefs.getString(key, null)
+            if (!cachedName.isNullOrBlank()) {
+                lsp("cache hit: key=$key, hostVersion=$hostVersion -> $cachedName")
+                return cachedName
+            }
+        }
         lsp("resolve class: key=$key")
         val resolvedName = resolver(context.classLoader)
-        prefs.edit().putString(key, resolvedName).apply()
+        prefs.edit()
+            .putString("host_version", hostVersion)
+            .putString(key, resolvedName)
+            .apply()
         lsp("resolved: key=$key -> $resolvedName")
         return resolvedName
     }

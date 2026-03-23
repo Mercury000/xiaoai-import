@@ -33,15 +33,17 @@ object VoiceAssistHook : YukiBaseHooker() {
                 val processName = currentProcessName(context)
                 lsp("process=$processName")
 
-                val hostVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                val hostVersion = requireNotNull(
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                ) { "host versionName is null" }
                 val sourceDir = context.applicationInfo.sourceDir
                 lsp("host=${context.packageName}, version=$hostVersion")
 
-                SmaliAnalyzer.getOrResolveClass(context, "token_class") {
+                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "token_class") {
                     SmaliAnalyzer.findTokenClass(context, sourceDir)
                 }
 
-                SmaliAnalyzer.getOrResolveClass(context, "device_class") {
+                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "device_class") {
                     SmaliAnalyzer.findDeviceClass(context, sourceDir)
                 }
 
