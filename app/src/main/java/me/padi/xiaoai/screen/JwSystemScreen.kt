@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.icu.text.Transliterator
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -81,6 +82,7 @@ class JwSystemScreen : BaseActivity() {
         fetchData(forceRefresh = false)
         setContent {
             MiuixTheme {
+                BackHandler(enabled = showAdaptersSheet) { showAdaptersSheet = false }
                 // 外层 Box 让遮罩能覆盖整屏（含 TopAppBar）
                 Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
