@@ -79,7 +79,7 @@ object WebViewHook : YukiBaseHooker() {
   const OLD_DEGREE_LABEL = '\u9009\u62e9\u5b66\u5386';
   const OLD_DEGREE_DESC = '\u672c\u79d1/\u4e13\u79d1';
   const NEW_DEGREE_LABEL = '\u5173\u4e8e\u6a21\u5757';
-  const NEW_DEGREE_DESC = '\u70b9\u51fb\u8fdb\u5165';
+  const NEW_DEGREE_DESC = '\u5c0f\u7231\u8bfe\u7a0b\u8868\u590d\u6d3b\u8ba1\u5212';
 
   const replaceTextOnly = () => {
     const root = document.body || document.documentElement;
