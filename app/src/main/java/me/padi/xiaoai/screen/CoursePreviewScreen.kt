@@ -163,7 +163,12 @@ class CoursePreviewScreen : BaseActivity() {
                                     Column(modifier = Modifier.padding(12.dp)) {
                                         Text(source.name.ifBlank { "(未命名课程)" }, fontSize = 16.sp)
                                         Text(
-                                            "${dayLabel(normalized.day)}  第${normalized.sections}节  周次:${normalized.weeks}",
+                                            "${dayLabel(normalized.day)}  第${normalized.sections}节",
+                                            fontSize = 12.sp,
+                                            color = if (highlight) Color(0xFFE53935) else MiuixTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            "周次:${normalized.weeks}",
                                             fontSize = 12.sp,
                                             color = if (highlight) Color(0xFFE53935) else MiuixTheme.colorScheme.onSurface
                                         )
@@ -344,7 +349,7 @@ private fun showConflictImportConfirmDialog(
 ) {
     MessageDialog.build()
         .setTitle("冲突提醒")
-        .setMessage("检测到 $conflictCourseCount 门课程存在时间冲突，建议先编辑修正。仍要继续导入吗？")
+        .setMessage("检测到 $conflictCourseCount 门课程存在时间冲突，如果导入可能导致整个课表导入失败，建议先编辑修正。仍要继续导入吗？")
         .setCancelButton("取消")
         .setOkButton("继续导入", object : com.kongzue.dialogx.interfaces.OnDialogButtonClickListener<MessageDialog> {
             override fun onClick(dialog: MessageDialog, v: View): Boolean {
