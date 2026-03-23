@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
@@ -26,6 +28,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -67,6 +70,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 class ModuleScreen : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         
         // 捕获并保存 Token (从 WebAppInterface.navSchoolScreen 传来的 Intent)
         val token = intent.getStringExtra("service_token")
@@ -90,6 +94,14 @@ class ModuleScreen : BaseActivity() {
                     mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "main") ?: "main")
                 }
                 val context = LocalContext.current
+
+                BackHandler(enabled = showBottomSheet.value || showShiguangSourceSheet.value) {
+                    when {
+                        showBottomSheet.value -> showBottomSheet.value = false
+                        showShiguangSourceSheet.value -> showShiguangSourceSheet.value = false
+                    }
+                }
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold { paddingValues ->
                         LazyColumn(
@@ -272,6 +284,7 @@ class ModuleScreen : BaseActivity() {
                             .fillMaxWidth()
                             .background(MiuixTheme.colorScheme.surface, RoundedCornerShape(topStart=16.dp, topEnd=16.dp))
                             .navigationBarsPadding()
+                            .imePadding()
                             .padding(horizontal = 16.dp)
                     ) {
                         Box(
@@ -325,6 +338,7 @@ class ModuleScreen : BaseActivity() {
                             .fillMaxWidth()
                             .background(MiuixTheme.colorScheme.surface, RoundedCornerShape(topStart=16.dp, topEnd=16.dp))
                             .navigationBarsPadding()
+                            .imePadding()
                             .padding(horizontal = 16.dp)
                     ) {
                         Box(
