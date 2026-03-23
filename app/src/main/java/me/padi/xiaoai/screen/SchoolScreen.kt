@@ -107,8 +107,8 @@ class SchoolScreen : BaseActivity() {
     companion object {
         private const val PREF_NAME = "shiguang_cache"
         private const val CACHE_KEY_PB = "school_index_pb_base64"
-        private const val CACHE_KEY_TS   = "root_index_ts"
-        private const val CACHE_KEY_SOURCE = "root_index_source"
+        private const val CACHE_KEY_TS   = "school_index_pb_ts"
+        private const val CACHE_KEY_SOURCE = "school_index_pb_source"
         /** 缓存有效期 6 小时；强制刷新时忽略 */
         private const val CACHE_TTL_MS   = 6 * 60 * 60 * 1000L
     }
@@ -138,7 +138,7 @@ class SchoolScreen : BaseActivity() {
         parseAndPopulateList(localJson)
 
         val prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val sourceKey = HostCompat.getShiguangRepoUrl(this) + "|" + HostCompat.getShiguangRepoBranch(this)
+        val sourceKey = HostCompat.getShiguangRepoUrl(this)
 
         // 2. 非强制刷新时尝试从缓存恢复
         if (!forceRefresh) {
@@ -157,7 +157,7 @@ class SchoolScreen : BaseActivity() {
 
         // 3. 拉取远程，更新缓存并刷新 UI
         isRefreshing = true
-        OkHttpClientManager.get(HostCompat.buildShiguangRawUrl(this, "school_index.pb"), onSuccess = { response ->
+        OkHttpClientManager.get(HostCompat.buildShiguangIndexRawUrl(this), onSuccess = { response ->
             try {
                 val remoteBytes = response.body.bytes()
                 if (remoteBytes.isNotEmpty()) {
@@ -337,7 +337,7 @@ private fun extractYamlPair(line: String): Pair<String, String>? {
 }
 
 private fun startOfficialJsImport(context: Context, folder: String, name: String, jsPath: String, url: String, desc: String) {
-    val scriptUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/$jsPath")
+    val scriptUrl = HostCompat.buildShiguangScriptRawUrl(context, "resources/$folder/$jsPath")
     WaitDialog.show("加载脚本...")
     OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
         WaitDialog.dismiss()

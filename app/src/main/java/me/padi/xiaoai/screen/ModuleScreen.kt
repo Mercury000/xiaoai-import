@@ -76,7 +76,7 @@ class ModuleScreen : BaseActivity() {
                     mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_url", "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse") ?: "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse")
                 }
                 var shiguangRepoBranch by remember {
-                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "index-pb-release") ?: "index-pb-release")
+                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "main") ?: "main")
                 }
                 val context = LocalContext.current
                 Scaffold { paddingValues ->
@@ -152,7 +152,7 @@ class ModuleScreen : BaseActivity() {
                                 TextField(
                                     value = shiguangRepoBranch,
                                     onValueChange = { newValue: String -> shiguangRepoBranch = newValue },
-                                    label = "分支"
+                                    label = "脚本分支"
                                 )
                                 Spacer(Modifier.height(10.dp))
                                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -161,7 +161,7 @@ class ModuleScreen : BaseActivity() {
                                         text = "重置",
                                         onClick = {
                                             shiguangRepoUrl = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"
-                                            shiguangRepoBranch = "index-pb-release"
+                                            shiguangRepoBranch = "main"
                                         }
                                     )
                                     Spacer(Modifier.width(16.dp))
@@ -231,7 +231,7 @@ class ModuleScreen : BaseActivity() {
                             Card {
                                 BasicComponent(
                                     title = "自定义拾光仓库源",
-                                    summary = "可配置仓库 URL 和 branch，用于拾光列表、适配器与脚本下载",
+                                    summary = "可配置仓库 URL 和脚本分支；索引固定走 index-pb-release",
                                     startAction = {
                                         Icon(
                                             modifier = Modifier.padding(end = 16.dp),

@@ -67,7 +67,7 @@ class JwSystemScreen : BaseActivity() {
         private const val KEY_COMMON   = "cache_common"
         private const val KEY_SCHOOLS  = "cache_schools"
         private const val KEY_SHIGUANG = "cache_shiguang_pb_base64"
-        private const val KEY_SHIGUANG_SOURCE = "cache_shiguang_source"
+        private const val KEY_SHIGUANG_SOURCE = "cache_shiguang_pb_source"
         private const val URL_COMMON   = "https://gitee.com/padi/aishedule/raw/master/system.json"
         private const val URL_SCHOOLS  = "https://gitee.com/padi/aishedule/raw/master/school.json"
     }
@@ -276,14 +276,14 @@ class JwSystemScreen : BaseActivity() {
     /** 从缓存或远程获取拾光仓库列表 */
     private suspend fun fetchShiguang(prefs: SharedPreferences, forceRefresh: Boolean): List<JwItem> {
         return try {
-            val sourceKey = HostCompat.getShiguangRepoUrl(this) + "|" + HostCompat.getShiguangRepoBranch(this)
+            val sourceKey = HostCompat.getShiguangRepoUrl(this)
             val raw = if (!forceRefresh && prefs.getString(KEY_SHIGUANG_SOURCE, null) == sourceKey) {
                 prefs.getString(KEY_SHIGUANG, null)
             } else null
             val bytes = if (!raw.isNullOrBlank()) {
                 android.util.Base64.decode(raw, android.util.Base64.DEFAULT)
             } else {
-                val fetched = OkHttpClientManager.getBytesSync(HostCompat.buildShiguangRawUrl(this, "school_index.pb"))
+                val fetched = OkHttpClientManager.getBytesSync(HostCompat.buildShiguangIndexRawUrl(this))
                 prefs.edit()
                     .putString(KEY_SHIGUANG, android.util.Base64.encodeToString(fetched, android.util.Base64.NO_WRAP))
                     .putString(KEY_SHIGUANG_SOURCE, sourceKey)
@@ -441,7 +441,7 @@ class JwSystemScreen : BaseActivity() {
     }
 
     private fun launchShiguangAdapter(context: Context, folder: String, adapter: ShiguangAdapterEntry) {
-        val scriptUrl = HostCompat.buildShiguangRawUrl(context, "resources/$folder/${adapter.assetJsPath}")
+        val scriptUrl = HostCompat.buildShiguangScriptRawUrl(context, "resources/$folder/${adapter.assetJsPath}")
         WaitDialog.show("脚本下载中...")
         OkHttpClientManager.get(scriptUrl, onSuccess = { resp ->
             WaitDialog.dismiss()
