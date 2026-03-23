@@ -3,6 +3,7 @@ package me.padi.xiaoai.hook
 import com.highcapable.yukihookapi.annotation.xposed.InjectYukiHookWithXposed
 import com.highcapable.yukihookapi.hook.factory.configs
 import com.highcapable.yukihookapi.hook.factory.encase
+import com.highcapable.yukihookapi.hook.factory.prefs
 import com.highcapable.yukihookapi.hook.xposed.proxy.IYukiHookXposedInit
 import com.kongzue.dialogx.DialogX
 import com.kongzue.dialogx.style.MIUIStyle
@@ -11,6 +12,9 @@ import top.sacz.xphelper.XpHelper
 
 @InjectYukiHookWithXposed
 class HookEntry : IYukiHookXposedInit {
+    companion object {
+        val prefs get() = XpHelper.context.prefs()
+    }
 
     override fun onInit() = configs {
         debugLog {
@@ -29,8 +33,9 @@ class HookEntry : IYukiHookXposedInit {
                 DialogX.globalStyle = MIUIStyle()
             }
         }
-        loadApp("com.xiaomi.aischedule") {
-            loadHooker(MainHook)
+        loadApp("com.miui.voiceassist") {
+            loadHooker(VoiceAssistHook)
+            loadHooker(WebViewHook)
         }
     }
 }

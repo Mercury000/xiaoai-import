@@ -5,10 +5,14 @@ import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 object OkHttpClientManager {
     private val client: OkHttpClient by lazy {
@@ -32,10 +36,7 @@ object OkHttpClientManager {
 
     // POST 请求（JSON格式）
     fun post(url: String, json: String, callback: Callback) {
-        val body = RequestBody.Companion.create(
-            "application/json; charset=utf-8".toMediaTypeOrNull(),
-            json
-        )
+        val body = json.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
 
         val request = Request.Builder()
             .url(url)
@@ -44,6 +45,43 @@ object OkHttpClientManager {
             .build()
 
         client.newCall(request).enqueue(callback)
+    }
+
+    /**
+     * 挂起式 GET 请求
+     */
+    suspend fun getSync(url: String): String = suspendCancellableCoroutine { continuation ->
+        get(url, object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body.string()
+                    continuation.resume(body)
+                } catch (e: Exception) {
+                    continuation.resumeWithException(e)
+                }
+            }
+        })
+    }
+
+    suspend fun getBytesSync(url: String): ByteArray = suspendCancellableCoroutine { continuation ->
+        get(url, object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body.bytes()
+                    continuation.resume(body)
+                } catch (e: Exception) {
+                    continuation.resumeWithException(e)
+                }
+            }
+        })
     }
 }
 

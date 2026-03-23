@@ -6,11 +6,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.webkit.JavascriptInterface
-import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.widget.Toast
 import kotlinx.serialization.Serializable
 import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
 
 private const val TAG = "AndroidBridge"
 
@@ -35,16 +36,16 @@ data class SingleSelectionDialogData(
 
 // 回调接口，用于与Activity/Fragment通信
 interface BridgeCallback {
-    fun onShowAlert(data: AlertDialogData, callback: (Boolean) -> Unit)
-    fun onShowPrompt(
-        data: PromptDialogData, callback: (String?) -> Unit, errorCallback: (String) -> Unit
-    )
-
-    fun onShowSingleSelection(data: SingleSelectionDialogData, callback: (Int?) -> Unit)
+    // 同步对话框：在主线程展示UI，通过CountDownLatch阻塞JS线程等待用户响应
+    fun onShowAlert(data: AlertDialogData, latch: CountDownLatch, result: BooleanArray)
+    fun onShowPrompt(data: PromptDialogData, latch: CountDownLatch, result: Array<String?>)
+    fun onShowSingleSelection(data: SingleSelectionDialogData, latch: CountDownLatch, result: IntArray)
     fun onSaveImportedCourses(coursesJson: String, callback: (Boolean, String?) -> Unit)
     fun onSaveCourseConfig(configJson: String, callback: (Boolean, String?) -> Unit)
     fun onSavePresetTimeSlots(timeSlotsJson: String, callback: (Boolean, String?) -> Unit)
     fun onTaskCompleted()
+    fun onReceiveHtml(html: String)
+    fun onError(message: String)
 }
 
 /**
@@ -74,202 +75,350 @@ class AndroidBridge(
         }
     }
 
-    /** JS 调用：显示 Alert 弹窗。 */
     @JavascriptInterface
-    fun showAlert(titleText: String, contentText: String, confirmText: String, promiseId: String) {
-        handler.post {
-            val data = AlertDialogData(titleText, contentText, confirmText)
-
-            callback.onShowAlert(data) { confirmed ->
-                if (confirmed) {
-                    resolveJsPromise(promiseId, "true")
-                } else {
-                    resolveJsPromise(promiseId, "false")
-                }
-            }
-        }
+    fun reportError(message: String) {
+        Log.e(TAG, "JS 报告错误: $message")
+        handler.post { callback.onError(message) }
     }
+
+    /** JS 调用：显示 Alert 弹窗（同步，阻塞JS线程直到用户响应）。 */
+    @JavascriptInterface
+    fun showAlert(titleText: String, contentText: String, confirmText: String): Boolean {
+        Log.d(TAG, "JS 触发 showAlert: $titleText, 内容长度: ${contentText.length}")
+        val latch = CountDownLatch(1)
+        val result = BooleanArray(1) { false }
+        val data = AlertDialogData(titleText, contentText, confirmText)
+        handler.post { callback.onShowAlert(data, latch, result) }
+        try { latch.await() } catch (e: InterruptedException) { Thread.currentThread().interrupt() }
+        Log.d(TAG, "showAlert 返回: ${result[0]}")
+        return result[0]
+    }
+
+    @JavascriptInterface
+    fun showAlert(titleText: String, contentText: String): Boolean = showAlert(titleText, contentText, "确定")
+    
+    @JavascriptInterface
+    fun showAlert(titleText: String): Boolean = showAlert(titleText, "", "确定")
 
     /**
      * JS 调用：显示 Prompt 弹窗，并支持异步 JS 验证。
      */
     @JavascriptInterface
-    fun showPrompt(
-        titleText: String,
-        tipText: String,
-        defaultText: String,
-        validatorJsFunction: String,
-        promiseId: String
-    ) {
-        handler.post {
-            val data = PromptDialogData(titleText, tipText, defaultText, validatorJsFunction)
-            // 成功回调：用户确认输入
-            val onConfirm: (String?) -> Unit = onConfirm@{ input ->
-                if (input == null) {
-                    // 用户取消
-                    resolveJsPromise(promiseId, "null")
-                    return@onConfirm
+    fun showPrompt(titleText: String, tipText: String, defaultText: String, validatorJsFunction: String): String? {
+        Log.d(TAG, "JS 触发 showPrompt: $titleText")
+        val latch = CountDownLatch(1)
+        val result = arrayOfNulls<String>(1)
+        val validValidator = if (validatorJsFunction == "null" || validatorJsFunction.isEmpty()) null else validatorJsFunction
+        val data = PromptDialogData(titleText, tipText, defaultText, validValidator)
+        handler.post { callback.onShowPrompt(data, latch, result) }
+        try { latch.await() } catch (e: InterruptedException) { Thread.currentThread().interrupt() }
+        Log.d(TAG, "showPrompt 返回: ${result[0]}")
+        return result[0]
+    }
+
+    @JavascriptInterface
+    fun showPrompt(titleText: String, tipText: String, defaultText: String): String? = showPrompt(titleText, tipText, defaultText, "")
+
+    @JavascriptInterface
+    fun showPrompt(titleText: String, tipText: String): String? = showPrompt(titleText, tipText, "", "")
+
+    /**
+     * 异步 Alert 弹窗：不阻塞 JS 线程
+     */
+    @JavascriptInterface
+    fun showAlertAsync(titleText: String, contentText: String, confirmText: String, promiseId: String) {
+        val latch = CountDownLatch(1)
+        val result = BooleanArray(1) { false }
+        val data = AlertDialogData(titleText, contentText, confirmText)
+        handler.post { 
+            callback.onShowAlert(data, latch, result)
+            Thread(Runnable {
+                try {
+                    latch.await()
+                    resolveJsPromise(promiseId, result[0].toString())
+                } catch (e: Exception) {
+                    rejectJsPromise(promiseId, e.message)
                 }
-
-                // 无验证函数时直接成功
-                if (data.validatorJsFunction.isNullOrEmpty()) {
-                    val escapedInput = input.replace("'", "\\'")
-                    resolveJsPromise(promiseId, "'$escapedInput'")
-                    return@onConfirm
-                }
-
-                // 执行 JS 验证
-                validatePromptInput(input, data.validatorJsFunction, promiseId)
-            }
-
-            // 错误回调：验证失败时的错误消息
-            val onError: (String) -> Unit = { errorMsg ->
-                // 这里可以将错误消息返回给JS，或者通过其他方式处理
-                Log.d(TAG, "验证错误: $errorMsg")
-            }
-
-            callback.onShowPrompt(data, onConfirm, onError)
+            }).start()
         }
     }
 
     /**
-     * 执行JS验证函数
+     * 异步 Prompt 弹窗
      */
-    private fun validatePromptInput(input: String, validatorFunction: String?, promiseId: String) {
-        handler.post {
-            // 构造 JS 验证代码
-            val jsScript = "javascript: $validatorFunction('${input.replace("'", "\\'")}')"
-
-            // 执行 JS 验证
-            webView.evaluateJavascript(jsScript, ValueCallback { result ->
-                val validationResult = result?.trim('\"')
-
-                if (validationResult.isNullOrEmpty() || validationResult.equals(
-                        "false", ignoreCase = true
-                    )
-                ) {
-                    // 验证成功：解决 Promise
-                    val escapedInput = input.replace("'", "\\'")
-                    resolveJsPromise(promiseId, "'$escapedInput'")
-                } else {
-                    // 验证失败时拒绝 Promise，避免 JS 端 await 卡住。
-                    handler.post {
-                        Toast.makeText(context, validationResult, Toast.LENGTH_SHORT).show()
-                    }
-                    rejectJsPromise(promiseId, validationResult)
+    @JavascriptInterface
+    fun showPromptAsync(titleText: String, tipText: String, defaultText: String, validatorJsFunction: String, promiseId: String) {
+        val latch = CountDownLatch(1)
+        val result = arrayOfNulls<String>(1)
+        val validValidator = if (validatorJsFunction == "null" || validatorJsFunction.isEmpty()) null else validatorJsFunction
+        val data = PromptDialogData(titleText, tipText, defaultText, validValidator)
+        handler.post { 
+            callback.onShowPrompt(data, latch, result)
+            Thread(Runnable {
+                try {
+                    latch.await()
+                    resolveJsPromise(promiseId, result[0], wrapInQuotes = true)
+                } catch (e: Exception) {
+                    rejectJsPromise(promiseId, e.message)
                 }
-            })
+            }).start()
         }
     }
 
-    /** JS 调用：显示单选列表弹窗。 */
     @JavascriptInterface
-    fun showSingleSelection(
-        titleText: String, itemsJsonString: String, defaultSelectedIndex: Int, promiseId: String
-    ) {
-        handler.post {
-            try {
-                // 解析JSON数组
-                val items = mutableListOf<String>()
-                val jsonArray = JSONArray(itemsJsonString)
-                for (i in 0 until jsonArray.length()) {
-                    items.add(jsonArray.getString(i))
-                }
-                val data = SingleSelectionDialogData(titleText, items, defaultSelectedIndex)
-                callback.onShowSingleSelection(data) { selectedIndex ->
-                    if (selectedIndex != null) {
-                        resolveJsPromise(promiseId, selectedIndex.toString())
-                    } else {
-                        resolveJsPromise(promiseId, "null")
-                    }
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "解析单选列表 itemsJsonString 失败: ${e.message}", e)
-                Toast.makeText(context, "单选列表数据错误，无法显示。", Toast.LENGTH_LONG).show()
-                rejectJsPromise(promiseId, "选项列表 JSON 无效: ${e.message}")
-            }
+    fun showSingleSelection(titleText: String, itemsJsonString: String, defaultSelectedIndex: Int): Int {
+        Log.d(TAG, "JS 触发 showSingleSelection: $titleText")
+        return try {
+            val items = parseSelectionItems(itemsJsonString)
+            val latch = CountDownLatch(1)
+            val result = IntArray(1) { -1 }
+            val data = SingleSelectionDialogData(titleText, items, defaultSelectedIndex)
+            handler.post { callback.onShowSingleSelection(data, latch, result) }
+            try { latch.await() } catch (e: InterruptedException) { Thread.currentThread().interrupt() }
+            Log.d(TAG, "showSingleSelection 返回: ${result[0]}")
+            result[0]
+        } catch (e: Exception) {
+            Log.e(TAG, "解析单选列表 itemsJsonString 失败: ${e.message}", e)
+            handler.post { Toast.makeText(context, "单选列表数据错误，无法显示。", Toast.LENGTH_LONG).show() }
+            -1
         }
+    }
+
+    @JavascriptInterface
+    fun showSingleSelection(titleText: String, itemsJsonString: String): Int = showSingleSelection(titleText, itemsJsonString, -1)
+
+    /**
+     * 异步单选列表弹窗
+     */
+    @JavascriptInterface
+    fun showSingleSelectionAsync(titleText: String, itemsJson: String, defaultIndex: Int, promiseId: String) {
+        val latch = CountDownLatch(1)
+        val result = IntArray(1) { -1 }
+        try {
+            val items = parseSelectionItems(itemsJson)
+            val data = SingleSelectionDialogData(titleText, items, defaultIndex)
+            handler.post { 
+                callback.onShowSingleSelection(data, latch, result)
+                Thread(Runnable {
+                    try {
+                        latch.await()
+                        if (result[0] < 0) {
+                            resolveJsPromise(promiseId, "null")
+                        } else {
+                            resolveJsPromise(promiseId, result[0].toString())
+                        }
+                    } catch (e: Exception) {
+                        rejectJsPromise(promiseId, e.message)
+                    }
+                }).start()
+            }
+        } catch (e: Exception) {
+            rejectJsPromise(promiseId, e.message ?: "showSingleSelectionAsync parse error")
+        }
+    }
+
+    /**
+     * JS 调用：输出日志到 Logcat，方便调试
+     */
+    @JavascriptInterface
+    fun showLog(message: String) {
+        Log.d(TAG, "JS_LOG: $message")
     }
 
     /** JS 调用：将课程数据传回 Android 端进行保存。 */
     @JavascriptInterface
     fun saveImportedCourses(coursesJsonString: String, promiseId: String) {
-        Log.d(TAG, "接收到课程数据，大小: ${coursesJsonString.length / 1024} KB")
-        callback.onSaveImportedCourses(coursesJsonString) { success, errorMsg ->
-            handler.post {
-                if (success) {
-                    resolveJsPromise(promiseId, "true")
-                } else {
+        val argCount = if (promiseId == "undefined" || promiseId.isEmpty()) 1 else 2
+        Log.d(TAG, "JS 调用: saveImportedCourses, 参数数量: $argCount, 数据大小: ${coursesJsonString.length / 1024} KB")
+        handler.post {
+            callback.onSaveImportedCourses(coursesJsonString) { success, errorMsg ->
+                if (promiseId.isNotEmpty() && promiseId != "undefined") {
+                    if (success) resolveJsPromise(promiseId, "true")
+                    else rejectJsPromise(promiseId, errorMsg ?: "课程导入失败")
+                } else if (!success) {
                     Toast.makeText(context, errorMsg ?: "课程导入失败", Toast.LENGTH_LONG).show()
-                    rejectJsPromise(promiseId, errorMsg ?: "课程导入失败")
                 }
             }
         }
     }
 
-    /**
-     * 将课表配置数据传回 Android 端进行保存。
-     */
+    /** 兼容旧版单一参数调用 */
+    @JavascriptInterface
+    fun saveImportedCourses(coursesJsonString: String) {
+        saveImportedCourses(coursesJsonString, "")
+    }
+
+    /** 将课表配置数据传回 Android 端进行保存。 */
     @JavascriptInterface
     fun saveCourseConfig(configJsonString: String, promiseId: String) {
-        Log.d(TAG, "接收到课表配置数据，大小: ${configJsonString.length} 字节")
-        callback.onSaveCourseConfig(configJsonString) { success, errorMsg ->
-            handler.post {
-                if (success) {
-                    resolveJsPromise(promiseId, "true")
-                } else {
-                    Toast.makeText(context, errorMsg ?: "课表配置导入失败", Toast.LENGTH_LONG)
-                        .show()
-                    rejectJsPromise(promiseId, errorMsg ?: "课表配置导入失败")
+        Log.d(TAG, "JS 调用: saveCourseConfig, 数据大小: ${configJsonString.length} 字节")
+        handler.post {
+            callback.onSaveCourseConfig(configJsonString) { success, errorMsg ->
+                if (promiseId.isNotEmpty() && promiseId != "undefined") {
+                    if (success) resolveJsPromise(promiseId, "true")
+                    else rejectJsPromise(promiseId, errorMsg ?: "配置导入失败")
                 }
             }
         }
+    }
+
+    @JavascriptInterface
+    fun saveCourseConfig(configJsonString: String) {
+        saveCourseConfig(configJsonString, "")
     }
 
     /** JS 调用：将预设时间段数据传回 Android 端进行保存。 */
     @JavascriptInterface
     fun savePresetTimeSlots(timeSlotsJsonString: String, promiseId: String) {
-        Log.d(TAG, "接收到预设时间段数据，大小: ${timeSlotsJsonString.length / 1024} KB")
-
-        callback.onSavePresetTimeSlots(timeSlotsJsonString) { success, errorMsg ->
-            handler.post {
-                if (success) {
-                    resolveJsPromise(promiseId, "true")
-                } else {
-                    Toast.makeText(context, errorMsg ?: "预设时间段导入失败", Toast.LENGTH_LONG)
-                        .show()
-                    rejectJsPromise(promiseId, errorMsg ?: "预设时间段导入失败")
+        Log.d(TAG, "JS 调用: savePresetTimeSlots, 数据大小: ${timeSlotsJsonString.length / 1024} KB")
+        handler.post {
+            callback.onSavePresetTimeSlots(timeSlotsJsonString) { success, errorMsg ->
+                if (promiseId.isNotEmpty() && promiseId != "undefined") {
+                    if (success) resolveJsPromise(promiseId, "true")
+                    else rejectJsPromise(promiseId, errorMsg ?: "时间段导入失败")
                 }
             }
         }
     }
 
-    /** JS 调用：通知 Native 端 JS 任务已逻辑完成。 */
+    @JavascriptInterface
+    fun savePresetTimeSlots(timeSlotsJsonString: String) {
+        savePresetTimeSlots(timeSlotsJsonString, "")
+    }
+
+    /** JS 调用：通知任务已完成（用于在 finally 块中重置解析状态）。 */
     @JavascriptInterface
     fun notifyTaskCompletion() {
+        Log.d(TAG, "JS 调用 notifyTaskCompletion")
         handler.post {
-            importTableId = null
             callback.onTaskCompleted()
         }
     }
 
+    /** JS 调用：将网页源码传回 Android 端。 */
+    @JavascriptInterface
+    fun postHtml(html: String) {
+        Log.d(TAG, "接收到网页 HTML，大小: ${html.length / 1024} KB")
+        handler.post { callback.onReceiveHtml(html) }
+    }
+
     /** 在 JS 环境中解决 Promise。 */
-    private fun resolveJsPromise(promiseId: String, result: String) {
+    private fun resolveJsPromise(promiseId: String, result: String?, wrapInQuotes: Boolean = false) {
+        val safeResult = if (wrapInQuotes) {
+            org.json.JSONObject.quote(result ?: "")
+        } else {
+            result ?: "null"
+        }
+        Log.d(TAG, "Resolving JS Promise: $promiseId with result: $safeResult")
         handler.post {
             webView.evaluateJavascript(
-                "window._resolveAndroidPromise('$promiseId', $result);", null
+                "window._resolveAndroidPromise('$promiseId', $safeResult);", null
             )
         }
     }
 
     /** 在 JS 环境中拒绝 Promise。 */
-    private fun rejectJsPromise(promiseId: String, error: String) {
+    private fun rejectJsPromise(promiseId: String, error: String?) {
+        val escapedError = org.json.JSONObject.quote(error ?: "Unknown error")
+        Log.d(TAG, "Rejecting JS Promise: $promiseId with error: $escapedError")
         handler.post {
-            val escapedError = error.replace("'", "\\'")
             webView.evaluateJavascript(
-                "window._rejectAndroidPromise('$promiseId', '$escapedError');", null
+                "window._rejectAndroidPromise('$promiseId', $escapedError);", null
             )
         }
     }
+
+    /** 
+     * 针对通用和第三方适配库的旧版 XiaoAi native 接口模拟: window.app.postData()
+     * 这些脚本（特别是星链/拾光的脚本）会把最终解析结果封装在 JSON 中并调用 postData / closeWebView.
+     */
+    @JavascriptInterface
+    fun postData(msg: String) {
+        Log.d(TAG, "接收到 postData 消息: $msg")
+        try {
+            val rootJson = org.json.JSONObject(msg)
+            
+            // 策略 A: 广度搜索。如果发现 root 本身或子节点包含 courses 数组，直接尝试导入。
+            var foundData = false
+            
+            fun tryImport(json: JSONObject): Boolean {
+                if (json.has("courses") || json.has("parserRes") || json.has("importData")) {
+                    Log.d(TAG, "从 postData 匹配到潜在课程数据结构，尝试透传到 saveImportedCourses")
+                    val dataToSave = if (json.has("courses")) json.toString() 
+                                     else if (json.has("parserRes")) json.getString("parserRes")
+                                     else json.optJSONObject("importData")?.optString("parserRes") ?: return false
+                    saveImportedCourses(dataToSave, "postData_" + System.currentTimeMillis())
+                    return true
+                }
+                return false
+            }
+
+            if (tryImport(rootJson)) {
+                foundData = true
+            } else {
+                // 策略 B: 兼容旧版 XiaoAi 嵌套格式
+                if (rootJson.has("storage")) {
+                    val storageNode = rootJson.getJSONObject("storage")
+                    if (storageNode.optString("key") == "presetData") {
+                        val urlEncodedValue = storageNode.optString("value")
+                        val decodedValue = java.net.URLDecoder.decode(urlEncodedValue, "UTF-8")
+                        val decodedJson = org.json.JSONObject(decodedValue)
+                        if (decodedJson.has("importData")) {
+                            val importData = org.json.JSONObject(decodedJson.getString("importData"))
+                            if (importData.has("parserRes")) {
+                                val parserRes = importData.getString("parserRes")
+                                Log.d(TAG, "从 postData 成功剥离 parserRes 数据")
+                                saveImportedCourses(parserRes, "postData_" + System.currentTimeMillis())
+                                foundData = true
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (!foundData) {
+                Log.w(TAG, "postData 收到消息但无法识别课程数据格式")
+                handler.post { callback.onError("脚本提取的数据格式无法识别 (postData)") }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "解析 postData 失败: ${e.message}", e)
+            handler.post { callback.onError("解析提取数据失败: ${e.message}") }
+        }
+    }
+
+    /**
+     * 模拟 window.app.closeWebView()，配合 postData 使用。
+     */
+    @JavascriptInterface
+    fun closeWebView() {
+        Log.d(TAG, "脚本请求关闭 WebView：执行关闭操作。")
+        handler.post {
+            if (context is android.app.Activity) {
+                // 等待 Toast 和异步处理完成再关闭
+                handler.postDelayed({
+                    context.finish()
+                }, 500)
+            }
+        }
+    }
 }
+    private fun parseSelectionItems(itemsJsonString: String): List<String> {
+        val items = mutableListOf<String>()
+        val jsonArray = JSONArray(itemsJsonString)
+        for (i in 0 until jsonArray.length()) {
+            val item = jsonArray.opt(i)
+            when (item) {
+                is JSONObject -> {
+                    val text = item.optString("label")
+                        .ifBlank { item.optString("title") }
+                        .ifBlank { item.optString("text") }
+                        .ifBlank { item.optString("name") }
+                        .ifBlank { item.optString("value") }
+                    items.add(text.ifBlank { item.toString() })
+                }
+                null -> items.add("")
+                else -> items.add(item.toString())
+            }
+        }
+        return items
+    }

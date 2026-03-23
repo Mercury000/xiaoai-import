@@ -50,8 +50,6 @@ android {
     }
     lint { checkReleaseBuilds = false }
 
-    // TODO Please visit https://highcapable.github.io/YukiHookAPI/en/api/special-features/host-inject
-    // TODO 请参考 https://highcapable.github.io/YukiHookAPI/zh-cn/api/special-features/host-inject
     androidResources.additionalParameters += listOf(
         "--allow-reserved-package-id", "--package-id", "0xf4"
     )
@@ -89,6 +87,7 @@ dependencies {
     implementation(libs.betterandroid.system.extension)
 
     implementation(libs.drawabletoolbox)
+    implementation(libs.dexkit)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -129,5 +128,5 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.4.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.4.0")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.10.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
 }

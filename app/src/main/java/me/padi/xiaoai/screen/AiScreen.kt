@@ -26,7 +26,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import me.padi.xiaoai.hook.MainHook.prefs
+import me.padi.xiaoai.hook.HookEntry
+import me.padi.xiaoai.proxyActivity
+import me.padi.xiaoai.writablePrefs
+import me.padi.xiaoai.HostCompat
+import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -47,30 +51,31 @@ class AiScreen : BaseActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val context = LocalContext.current
             val scrollBehavior = MiuixScrollBehavior()
 
             // 从SharedPreferences读取保存的值
             var apiUrl by remember {
-                mutableStateOf(prefs.native().getString("api_url", ""))
+                mutableStateOf(context.writablePrefs().getString("api_url", "https://dashscope.aliyuncs.com/compatible-mode/v1") ?: "https://dashscope.aliyuncs.com/compatible-mode/v1")
             }
             var modelName by remember {
-                mutableStateOf(prefs.native().getString("model_name", ""))
+                mutableStateOf(context.writablePrefs().getString("model_name", "qwen3-coder-plus") ?: "qwen3-coder-plus")
+            }
+            var jwUrl by remember {
+                mutableStateOf(context.writablePrefs().getString("jw_webview_url", "") ?: "")
             }
             var apiKey by remember {
-                mutableStateOf(prefs.native().getString("api_key", ""))
+                mutableStateOf(context.writablePrefs().getString("api_key", "") ?: "")
             }
-
-            val context = LocalContext.current
-            val uriHandler = LocalUriHandler.current
-            val isAllFieldsFilled = remember(apiUrl, modelName, apiKey) {
-                apiUrl.isNotBlank() && modelName.isNotBlank() && apiKey.isNotBlank()
+            val isAllFieldsFilled = remember(apiUrl, modelName, apiKey, jwUrl) {
+                apiUrl.isNotBlank() && modelName.isNotBlank() && apiKey.isNotBlank() && jwUrl.isNotBlank()
             }
             var passwordVisible by remember { mutableStateOf(false) }
             MiuixTheme {
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = "小爱课程表", scrollBehavior = scrollBehavior
+                            title = "AI 解析配置", scrollBehavior = scrollBehavior
                         )
                     }) { paddingValues ->
                     LazyColumn(
@@ -85,25 +90,10 @@ class AiScreen : BaseActivity() {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 Spacer(Modifier.height(8.dp))
                                 TextField(
-                                    value = apiUrl, onValueChange = { newValue ->
-                                        apiUrl = newValue
-                                        if (newValue.isNotBlank()) {
-                                            prefs.native().edit {
-                                                putString("api_url", newValue)
-                                            }
-                                        }
-                                    }, label = "Api地址"
-                                )
-
-                                Spacer(Modifier.height(8.dp))
-
-                                TextField(
-                                    value = modelName, onValueChange = { newValue ->
+                                    value = modelName, onValueChange = { newValue: String ->
                                         modelName = newValue
                                         if (newValue.isNotBlank()) {
-                                            prefs.native().edit {
-                                                putString("model_name", newValue)
-                                            }
+                                            context.writablePrefs().edit().putString("model_name", newValue).apply()
                                         }
                                     }, label = "模型名称"
                                 )
@@ -112,50 +102,55 @@ class AiScreen : BaseActivity() {
 
                                 TextField(
                                     value = apiKey,
-                                    onValueChange = { newValue ->
+                                    onValueChange = { newValue: String ->
                                         apiKey = newValue
-                                        if (newValue.isNotBlank()) {
-                                            prefs.native().edit {
-                                                putString("api_key", newValue)
-                                            }
-                                        }
+                                        context.writablePrefs().edit().putString("api_key", newValue).apply()
                                     },
-                                    label = "ApiKey",
-                                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                    trailingIcon = {
-                                        IconButton(
-                                            onClick = { passwordVisible = !passwordVisible },
-                                            modifier = Modifier.padding(end = 12.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = MiuixIcons.Rename,
-                                                tint = if (passwordVisible) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSecondaryContainer,
-                                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
-                                            )
-                                        }
-                                    })
+                                    label = "ApiKey"
+                                )
+
                                 Spacer(Modifier.height(8.dp))
+
+                                TextField(
+                                    value = apiUrl, onValueChange = { newValue: String ->
+                                        apiUrl = newValue
+                                        context.writablePrefs().edit().putString("api_url", newValue).apply()
+                                    }, label = "Api地址"
+                                )
+
+                                Spacer(Modifier.height(8.dp))
+
+                                TextField(
+                                    value = jwUrl,
+                                    onValueChange = { newValue: String ->
+                                        jwUrl = newValue
+                                        context.writablePrefs().edit().putString("jw_webview_url", newValue).apply()
+                                    },
+                                    label = "教务系统链接"
+                                )
+
+                                Spacer(Modifier.height(8.dp))
+
                                 Button(
                                     modifier = Modifier.fillMaxWidth(), onClick = {
                                         if (isAllFieldsFilled) {
-                                            val intent = Intent(context, SchoolScreen::class.java)
-                                            intent.putExtra(
-                                                "proxy_target_activity",
-                                                "com.xiaomi.aischedule.activity.DeleteAccountActivity"
-                                            )
+                                            val intent = Intent(context, WebViewScreen::class.java).apply {
+                                                putExtra("url", jwUrl)
+                                                putExtra("title", "AI解析导入")
+                                                putExtra("text", "请在登录后点击下方“开始解析导入”按钮")
+                                            }
                                             context.startActivity(intent)
                                         } else {
                                             Toast.makeText(
                                                 context,
-                                                "请先填写完整的API信息（Api地址、模型名称、ApiKey）",
+                                                "请先填写完整的配置（教务链接、模型名称、ApiKey 等）",
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         }
                                     }, colors = ButtonDefaults.buttonColorsPrimary()
                                 ) {
                                     Text(
-                                        "进入导入课表页面", color = MiuixTheme.colorScheme.onPrimary
+                                        "进入教务并开始解析", color = MiuixTheme.colorScheme.onPrimary
                                     )
                                 }
                             }

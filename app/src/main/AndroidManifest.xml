@@ -37,6 +37,31 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".screen.AiScreen"
+            android:exported="true"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".screen.SchoolScreen"
+            android:exported="true"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".screen.ModuleScreen"
+            android:exported="true"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".screen.WebViewScreen"
+            android:exported="true"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".screen.JwSystemScreen"
+            android:exported="true"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".screen.CoursePreviewScreen"
+            android:exported="true"
+            android:screenOrientation="portrait" />
+
         <activity-alias
             android:name=".Home"
             android:exported="true"
