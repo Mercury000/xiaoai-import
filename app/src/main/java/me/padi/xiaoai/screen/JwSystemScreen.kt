@@ -66,13 +66,12 @@ class JwSystemScreen : BaseActivity() {
         private const val PREF_NAME    = "jw_cache"
         private const val KEY_COMMON   = "cache_common"
         private const val KEY_SCHOOLS  = "cache_schools"
-        private const val KEY_SHIGUANG = "cache_shiguang_pb_base64"
         private const val KEY_SHIGUANG_SOURCE = "cache_shiguang_pb_source"
         private const val URL_COMMON   = "https://gitee.com/padi/aishedule/raw/master/system.json"
         private const val URL_SCHOOLS  = "https://gitee.com/padi/aishedule/raw/master/school.json"
 
         // 白名单：用于清理 SharedPreferences 中残留的废弃键
-        private val VALID_KEYS = setOf(KEY_COMMON, KEY_SCHOOLS, KEY_SHIGUANG, KEY_SHIGUANG_SOURCE)
+        private val VALID_KEYS = setOf(KEY_COMMON, KEY_SCHOOLS, KEY_SHIGUANG_SOURCE)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -288,15 +287,15 @@ class JwSystemScreen : BaseActivity() {
     private suspend fun fetchShiguang(prefs: SharedPreferences, forceRefresh: Boolean): List<JwItem> {
         return try {
             val sourceKey = HostCompat.getShiguangRepoUrl(this)
-            val raw = if (!forceRefresh && prefs.getString(KEY_SHIGUANG_SOURCE, null) == sourceKey) {
-                prefs.getString(KEY_SHIGUANG, null)
-            } else null
-            val bytes = if (!raw.isNullOrBlank()) {
-                android.util.Base64.decode(raw, android.util.Base64.DEFAULT)
+            val cacheFile = java.io.File(cacheDir, "shiguang_index_cache.pb")
+            val isSourceValid = prefs.getString(KEY_SHIGUANG_SOURCE, null) == sourceKey
+
+            val bytes = if (!forceRefresh && isSourceValid && cacheFile.exists()) {
+                cacheFile.readBytes()
             } else {
                 val fetched = OkHttpClientManager.getBytesSync(HostCompat.buildShiguangIndexRawUrl(this))
+                cacheFile.writeBytes(fetched)
                 prefs.edit()
-                    .putString(KEY_SHIGUANG, android.util.Base64.encodeToString(fetched, android.util.Base64.NO_WRAP))
                     .putString(KEY_SHIGUANG_SOURCE, sourceKey)
                     .apply()
                 fetched

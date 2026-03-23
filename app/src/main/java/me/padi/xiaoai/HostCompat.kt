@@ -2,7 +2,7 @@ package me.padi.xiaoai
 
 import android.content.Context
 
-fun Context.writablePrefs() = getSharedPreferences(packageName + "_preferences", Context.MODE_PRIVATE)
+fun Context.writablePrefs() = getSharedPreferences("xiaoai_module_preferences", Context.MODE_PRIVATE)
 
 object HostCompat {
     private const val PREF_KEY_SHIGUANG_REPO_URL = "debug_shiguang_repo_url"
