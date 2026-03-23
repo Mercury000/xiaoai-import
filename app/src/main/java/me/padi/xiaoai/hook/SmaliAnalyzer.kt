@@ -1,9 +1,9 @@
-package me.padi.xiaoai.hook
+package com.mercury.xiaoaiimport.hook
 
 import android.content.Context
 import android.os.Build
 import de.robv.android.xposed.XposedBridge
-import me.padi.xiaoai.BuildConfig
+import com.mercury.xiaoaiimport.BuildConfig
 import org.luckypray.dexkit.DexKitBridge
 import java.io.File
 import java.io.FileOutputStream

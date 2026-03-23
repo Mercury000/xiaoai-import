@@ -1,6 +1,6 @@
 @file:Suppress("SameParameterValue")
 
-package me.padi.xiaoai.ui.view
+package com.mercury.xiaoaiimport.ui.view
 
 import android.content.Context
 import android.content.res.ColorStateList

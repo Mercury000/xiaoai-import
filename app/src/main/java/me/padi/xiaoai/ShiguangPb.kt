@@ -1,4 +1,4 @@
-package me.padi.xiaoai
+package com.mercury.xiaoaiimport
 
 data class ShiguangAdapterEntry(
     val adapterId: String,

@@ -1,4 +1,4 @@
-package me.padi.xiaoai.screen
+package com.mercury.xiaoaiimport.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,8 +13,8 @@ import android.webkit.WebView as NativeWebView
 import com.kongzue.dialogx.dialogs.BottomMenu
 import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
-import me.padi.xiaoai.OkHttpClientManager
-import me.padi.xiaoai.get
+import com.mercury.xiaoaiimport.OkHttpClientManager
+import com.mercury.xiaoaiimport.get
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -53,17 +53,17 @@ import com.kevinnzou.web.WebContent
 import com.kevinnzou.web.WebView
 import com.kevinnzou.web.rememberWebViewNavigator
 import com.kevinnzou.web.rememberWebViewState
-import me.padi.xiaoai.click.openContributorQQ
-import me.padi.xiaoai.hook.HookEntry
-import me.padi.xiaoai.proxyActivity
-import me.padi.xiaoai.writablePrefs
-import me.padi.xiaoai.ApiClient
-import me.padi.xiaoai.HostCompat
-import me.padi.xiaoai.ParseResult
-import me.padi.xiaoai.CourseRepository
-import me.padi.xiaoai.R
-import me.padi.xiaoai.ShiguangAdapterEntry
-import me.padi.xiaoai.parseShiguangSchoolIndexPb
+import com.mercury.xiaoaiimport.click.openContributorQQ
+import com.mercury.xiaoaiimport.hook.HookEntry
+import com.mercury.xiaoaiimport.proxyActivity
+import com.mercury.xiaoaiimport.writablePrefs
+import com.mercury.xiaoaiimport.ApiClient
+import com.mercury.xiaoaiimport.HostCompat
+import com.mercury.xiaoaiimport.ParseResult
+import com.mercury.xiaoaiimport.CourseRepository
+import com.mercury.xiaoaiimport.R
+import com.mercury.xiaoaiimport.ShiguangAdapterEntry
+import com.mercury.xiaoaiimport.parseShiguangSchoolIndexPb
 import org.json.JSONArray
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity

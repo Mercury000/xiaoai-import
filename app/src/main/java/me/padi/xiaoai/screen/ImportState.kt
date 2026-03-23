@@ -1,4 +1,4 @@
-package me.padi.xiaoai.screen
+package com.mercury.xiaoaiimport.screen
 
 sealed class ImportState {
     data object Idle : ImportState()

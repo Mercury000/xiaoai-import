@@ -1,6 +1,6 @@
 @file:Suppress("SetTextI18n")
 
-package me.padi.xiaoai.ui.activity
+package com.mercury.xiaoaiimport.ui.activity
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
@@ -18,8 +18,8 @@ import androidx.core.view.isVisible
 import androidx.core.view.setPadding
 import androidx.core.view.updateMargins
 import androidx.core.view.updatePadding
-import me.padi.xiaoai.BuildConfig
-import me.padi.xiaoai.R
+import com.mercury.xiaoaiimport.BuildConfig
+import com.mercury.xiaoaiimport.R
 import com.highcapable.betterandroid.system.extension.component.disableComponent
 import com.highcapable.betterandroid.system.extension.component.enableComponent
 import com.highcapable.betterandroid.system.extension.component.isComponentEnabled
@@ -36,7 +36,7 @@ import com.highcapable.hikage.widget.android.widget.LinearLayout
 import com.highcapable.hikage.widget.android.widget.Space
 import com.highcapable.hikage.widget.android.widget.TextView
 import com.highcapable.hikage.widget.androidx.core.widget.NestedScrollView
-import com.highcapable.hikage.widget.me.padi.xiaoai.ui.view.MaterialSwitch
+import com.highcapable.hikage.widget.com.mercury.xiaoaiimport.ui.view.MaterialSwitch
 import com.highcapable.yukihookapi.YukiHookAPI
 import android.R as Android_R
 

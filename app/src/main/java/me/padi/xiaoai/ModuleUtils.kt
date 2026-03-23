@@ -1,10 +1,10 @@
-package me.padi.xiaoai
+package com.mercury.xiaoaiimport
 
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import androidx.annotation.RawRes
-import me.padi.xiaoai.screen.WebViewScreen
+import com.mercury.xiaoaiimport.screen.WebViewScreen
 
 /**
  * 模块通用工具函数

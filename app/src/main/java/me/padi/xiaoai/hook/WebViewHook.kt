@@ -1,12 +1,12 @@
-package me.padi.xiaoai.hook
+package com.mercury.xiaoaiimport.hook
 
 import android.content.Context
 import android.webkit.WebView
 import androidx.annotation.RawRes
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import me.padi.xiaoai.R
-import me.padi.xiaoai.WebAppInterface
+import com.mercury.xiaoaiimport.R
+import com.mercury.xiaoaiimport.WebAppInterface
 import top.sacz.xphelper.XpHelper
 
 object WebViewHook : YukiBaseHooker() {

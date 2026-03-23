@@ -1,4 +1,4 @@
-package me.padi.xiaoai.application
+package com.mercury.xiaoaiimport.application
 
 import android.webkit.CookieManager
 import androidx.appcompat.app.AppCompatDelegate

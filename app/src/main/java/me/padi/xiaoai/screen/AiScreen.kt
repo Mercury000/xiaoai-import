@@ -1,4 +1,4 @@
-package me.padi.xiaoai.screen
+package com.mercury.xiaoaiimport.screen
 
 import android.content.Intent
 import android.os.Bundle
@@ -26,10 +26,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import me.padi.xiaoai.hook.HookEntry
-import me.padi.xiaoai.proxyActivity
-import me.padi.xiaoai.writablePrefs
-import me.padi.xiaoai.HostCompat
+import com.mercury.xiaoaiimport.hook.HookEntry
+import com.mercury.xiaoaiimport.proxyActivity
+import com.mercury.xiaoaiimport.writablePrefs
+import com.mercury.xiaoaiimport.HostCompat
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button

@@ -1,4 +1,4 @@
-package me.padi.xiaoai.screen
+package com.mercury.xiaoaiimport.screen
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -28,14 +28,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
-import me.padi.xiaoai.click.openAiImportScreen
-import me.padi.xiaoai.click.openJsonImportDialog
-import me.padi.xiaoai.HostCompat
-import me.padi.xiaoai.OkHttpClientManager
-import me.padi.xiaoai.ShiguangAdapterEntry
-import me.padi.xiaoai.get
-import me.padi.xiaoai.launchImportActivity
-import me.padi.xiaoai.parseShiguangSchoolIndexPb
+import com.mercury.xiaoaiimport.click.openAiImportScreen
+import com.mercury.xiaoaiimport.click.openJsonImportDialog
+import com.mercury.xiaoaiimport.HostCompat
+import com.mercury.xiaoaiimport.OkHttpClientManager
+import com.mercury.xiaoaiimport.ShiguangAdapterEntry
+import com.mercury.xiaoaiimport.get
+import com.mercury.xiaoaiimport.launchImportActivity
+import com.mercury.xiaoaiimport.parseShiguangSchoolIndexPb
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme

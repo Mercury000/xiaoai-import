@@ -1,4 +1,4 @@
-package me.padi.xiaoai.click
+package com.mercury.xiaoaiimport.click
 
 import android.content.Context
 import android.content.Intent
@@ -11,13 +11,13 @@ import com.kongzue.dialogx.util.InputInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import me.padi.xiaoai.ApiClient.COLOR_PRESETS
-import me.padi.xiaoai.Course
-import me.padi.xiaoai.openCoursePreviewScreen
-import me.padi.xiaoai.ScheduleConfig
-import me.padi.xiaoai.proxyActivity
-import me.padi.xiaoai.screen.AiScreen
-import me.padi.xiaoai.screen.JwSystemScreen
+import com.mercury.xiaoaiimport.ApiClient.COLOR_PRESETS
+import com.mercury.xiaoaiimport.Course
+import com.mercury.xiaoaiimport.openCoursePreviewScreen
+import com.mercury.xiaoaiimport.ScheduleConfig
+import com.mercury.xiaoaiimport.proxyActivity
+import com.mercury.xiaoaiimport.screen.AiScreen
+import com.mercury.xiaoaiimport.screen.JwSystemScreen
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs

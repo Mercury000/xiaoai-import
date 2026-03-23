@@ -1,4 +1,4 @@
-package me.padi.xiaoai
+package com.mercury.xiaoaiimport
 
 import org.junit.Test
 

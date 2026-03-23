@@ -1,8 +1,8 @@
-package me.padi.xiaoai
+package com.mercury.xiaoaiimport
 
 import android.content.Context
 import android.content.Intent
-import me.padi.xiaoai.screen.CoursePreviewScreen
+import com.mercury.xiaoaiimport.screen.CoursePreviewScreen
 import org.json.JSONArray
 import org.json.JSONObject
 

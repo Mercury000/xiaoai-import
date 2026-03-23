@@ -1,4 +1,4 @@
-package me.padi.xiaoai.screen
+package com.mercury.xiaoaiimport.screen
 
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -33,12 +33,12 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import me.padi.xiaoai.Course
-import me.padi.xiaoai.CourseRepository
-import me.padi.xiaoai.HostCompat
-import me.padi.xiaoai.readPreviewCourses
-import me.padi.xiaoai.readPreviewSchedule
-import me.padi.xiaoai.readPreviewTableName
+import com.mercury.xiaoaiimport.Course
+import com.mercury.xiaoaiimport.CourseRepository
+import com.mercury.xiaoaiimport.HostCompat
+import com.mercury.xiaoaiimport.readPreviewCourses
+import com.mercury.xiaoaiimport.readPreviewSchedule
+import com.mercury.xiaoaiimport.readPreviewTableName
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults

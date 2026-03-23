@@ -1,4 +1,4 @@
-package me.padi.xiaoai.hook
+package com.mercury.xiaoaiimport.hook
 
 import android.app.Application
 import android.content.Context
@@ -6,7 +6,7 @@ import android.os.Build
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import de.robv.android.xposed.XposedBridge
-import me.padi.xiaoai.HostCompat
+import com.mercury.xiaoaiimport.HostCompat
 import top.sacz.xphelper.XpHelper
 
 object VoiceAssistHook : YukiBaseHooker() {

@@ -1,4 +1,4 @@
-package me.padi.xiaoai.screen
+package com.mercury.xiaoaiimport.screen
 
 import android.app.Activity
 import android.content.ComponentName
@@ -44,12 +44,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import me.padi.xiaoai.R
-import me.padi.xiaoai.click.openContributorQQ
-import me.padi.xiaoai.hook.HookEntry
-import me.padi.xiaoai.proxyActivity
-import me.padi.xiaoai.writablePrefs
-import me.padi.xiaoai.HostCompat
+import com.mercury.xiaoaiimport.R
+import com.mercury.xiaoaiimport.click.openContributorQQ
+import com.mercury.xiaoaiimport.hook.HookEntry
+import com.mercury.xiaoaiimport.proxyActivity
+import com.mercury.xiaoaiimport.writablePrefs
+import com.mercury.xiaoaiimport.HostCompat
 import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent

@@ -1,5 +1,5 @@
 // AndroidBridge.kt
-package me.padi.xiaoai
+package com.mercury.xiaoaiimport
 
 import android.content.Context
 import android.os.Handler

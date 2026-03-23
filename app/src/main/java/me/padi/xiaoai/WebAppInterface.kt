@@ -1,4 +1,4 @@
-package me.padi.xiaoai
+package com.mercury.xiaoaiimport
 
 import android.app.AlertDialog
 import android.content.ClipData
@@ -8,8 +8,8 @@ import android.content.Intent
 import android.webkit.JavascriptInterface
 import android.widget.TextView
 import android.widget.Toast
-import me.padi.xiaoai.screen.JwSystemScreen
-import me.padi.xiaoai.screen.ModuleScreen
+import com.mercury.xiaoaiimport.screen.JwSystemScreen
+import com.mercury.xiaoaiimport.screen.ModuleScreen
 
 class WebAppInterface(private val context: Context) {
 
