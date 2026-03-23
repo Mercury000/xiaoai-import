@@ -57,26 +57,19 @@ fun openJsonImportDialog(context: Context) {
                 for (i in 0 until courseArray.length()) {
                     val obj = courseArray.getJSONObject(i)
                     val c = Course()
-                    c.name = obj.optString("name")
-                    c.teacher = obj.optString("teacher")
-                    c.position = obj.optString("position")
-                    c.day = obj.optInt("day")
-                    c.sections = obj.optString("sections")
-                    c.weeks = obj.optString("weeks")
-
-                    if (c.sections.isBlank()) {
-                        val start = obj.optInt("startSection", 1)
-                        val end = obj.optInt("endSection", 2)
-                        c.sections = (start..end).joinToString(",")
-                    }
-                    if (c.weeks.isBlank()) {
-                        val weekArray = obj.optJSONArray("weeks")
-                        if (weekArray != null) {
-                            val weekList = mutableListOf<Int>()
-                            for (j in 0 until weekArray.length()) weekList.add(weekArray.getInt(j))
-                            c.weeks = weekList.joinToString(",")
-                        }
-                    }
+                    c.name = obj.optString("name").trim()
+                    c.teacher = obj.optString("teacher", obj.optString("instructor", "")).trim()
+                    c.position = obj.optString(
+                        "position",
+                        obj.optString("location", obj.optString("classroom", ""))
+                    ).trim()
+                    c.day = firstValidInt(
+                        obj.optInt("day", -1),
+                        obj.optInt("weekday", -1),
+                        obj.optInt("weekDay", -1)
+                    )
+                    c.sections = parseSections(obj)
+                    c.weeks = parseWeeks(obj)
 
                     c.sanitizeAndValidate()
                     val colorIndex = if (c.name.isNotEmpty()) abs(c.name.hashCode() % COLOR_PRESETS.size) else i % COLOR_PRESETS.size
@@ -117,4 +110,60 @@ fun openContributorQQ(context: Context, uin: String) {
     } catch (_: Exception) {
         Toast.makeText(context, "未找到QQ", Toast.LENGTH_SHORT).show()
     }
+}
+
+private fun firstValidInt(vararg values: Int): Int {
+    return values.firstOrNull { it > 0 } ?: 0
+}
+
+private fun parseSections(obj: JSONObject): String {
+    val sectionsText = obj.optString("sections", "").trim()
+    if (sectionsText.isNotBlank()) return sectionsText
+
+    val sectionsArray = obj.optJSONArray("sections")
+    if (sectionsArray != null && sectionsArray.length() > 0) {
+        val list = mutableListOf<String>()
+        for (i in 0 until sectionsArray.length()) {
+            val value = sectionsArray.opt(i)?.toString()?.trim().orEmpty()
+            if (value.isNotBlank()) list.add(value)
+        }
+        if (list.isNotEmpty()) return list.joinToString(",")
+    }
+
+    val start = obj.optInt("startSection", -1)
+    val end = obj.optInt("endSection", -1)
+    if (start > 0 && end > 0) {
+        val from = minOf(start, end)
+        val to = maxOf(start, end)
+        return (from..to).joinToString(",")
+    }
+
+    return ""
+}
+
+private fun parseWeeks(obj: JSONObject): String {
+    val weeksAny = obj.opt("weeks")
+    if (weeksAny is JSONArray) {
+        val list = mutableListOf<String>()
+        for (i in 0 until weeksAny.length()) {
+            val value = weeksAny.opt(i)?.toString()?.trim().orEmpty()
+            if (value.isNotBlank()) list.add(value)
+        }
+        if (list.isNotEmpty()) return list.joinToString(",")
+    }
+
+    val weeksText = obj.optString("weeks", "").trim()
+    if (weeksText.isNotBlank()) return weeksText
+
+    val alias = obj.optJSONArray("weekList")
+    if (alias != null && alias.length() > 0) {
+        val list = mutableListOf<String>()
+        for (i in 0 until alias.length()) {
+            val value = alias.opt(i)?.toString()?.trim().orEmpty()
+            if (value.isNotBlank()) list.add(value)
+        }
+        if (list.isNotEmpty()) return list.joinToString(",")
+    }
+
+    return ""
 }
