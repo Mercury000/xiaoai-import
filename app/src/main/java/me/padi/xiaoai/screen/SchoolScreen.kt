@@ -44,6 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevinnzou.web.AccompanistWebViewClient
@@ -391,6 +393,8 @@ private fun SchoolListScreenContent(
     var webViewRef by remember { mutableStateOf<NativeWebView?>(null) }
 
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val coroutineScope = rememberCoroutineScope()
     val navigator = rememberWebViewNavigator()
     val webViewState = rememberWebViewState(url)
@@ -426,6 +430,8 @@ private fun SchoolListScreenContent(
                     items(schools) { school ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
                                 if (school.importType == "shiguang_official") {
                                     val folder = school.url // 我们之前把 resource_folder 存到了 url
                                     val adapters = school.adapters

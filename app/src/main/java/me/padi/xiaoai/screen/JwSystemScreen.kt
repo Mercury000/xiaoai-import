@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kongzue.dialogx.dialogs.TipDialog
@@ -408,12 +410,16 @@ class JwSystemScreen : BaseActivity() {
     @Composable
     private fun JwItemRow(item: JwItem) {
         val context = LocalContext.current
+        val focusManager = LocalFocusManager.current
+        val keyboardController = LocalSoftwareKeyboardController.current
         
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
                 .clickable {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
                     handleItemClick(context, item)
                 }
         ) {
