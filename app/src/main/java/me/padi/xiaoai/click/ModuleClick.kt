@@ -7,6 +7,7 @@ import android.widget.Toast
 import com.kongzue.dialogx.dialogs.InputDialog
 import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
+import com.kongzue.dialogx.util.InputInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,6 +35,11 @@ fun openAiImportScreen(context: Context) {
 
 fun openJsonImportDialog(context: Context) {
     val prompt = InputDialog.show("JSON导入", "请粘贴符合规范的 JSON 数据", "确定", "取消")
+    prompt.setInputInfo(
+        InputInfo()
+            .setMAX_LENGTH(Int.MAX_VALUE)
+            .setMultipleLines(true)
+    )
     prompt.setOkButton { _, _, content ->
         val jsonContent = content.trim()
         if (jsonContent.isBlank()) return@setOkButton false
