@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.net.toUri
+import java.time.LocalDate
+import java.time.ZoneOffset
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -164,7 +166,7 @@ object PresetDataLauncher {
 
     private fun normalizeStartSemester(raw: String?): String {
         val value = raw?.trim().orEmpty()
-        if (value.isEmpty()) return ""
+        if (value.isEmpty()) return currentDayStartMillisUtc8()
         value.toLongOrNull()?.let { numeric ->
             return if (numeric in 1L..99_999_999_999L) {
                 (numeric * 1000L).toString()
@@ -173,5 +175,13 @@ object PresetDataLauncher {
             }
         }
         return value
+    }
+
+    private fun currentDayStartMillisUtc8(): String {
+        return LocalDate.now(ZoneOffset.ofHours(8))
+            .atStartOfDay()
+            .toInstant(ZoneOffset.ofHours(8))
+            .toEpochMilli()
+            .toString()
     }
 }
