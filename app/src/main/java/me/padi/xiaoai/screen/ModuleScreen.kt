@@ -87,13 +87,13 @@ class ModuleScreen : BaseActivity() {
 
                 var url by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_url", "")) }
                 var javaScriptStr by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_script", "")) }
+                val context = LocalContext.current
                 var shiguangRepoUrl by remember {
-                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_url", "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse") ?: "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse")
+                    mutableStateOf(HostCompat.getShiguangRepoUrl(context))
                 }
                 var shiguangRepoBranch by remember {
-                    mutableStateOf<String>(HookEntry.prefs.getString("debug_shiguang_repo_branch", "main") ?: "main")
+                    mutableStateOf(HostCompat.getShiguangScriptBranch(context))
                 }
-                val context = LocalContext.current
 
                 BackHandler(enabled = showBottomSheet.value || showShiguangSourceSheet.value) {
                     when {
