@@ -1,5 +1,6 @@
 import com.android.build.api.variant.impl.VariantOutputImpl
 import org.gradle.api.GradleException
+import org.gradle.api.tasks.Copy
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.time.LocalDate
@@ -222,6 +223,22 @@ tasks.withType<KotlinJvmCompile>().configureEach {
             "-Xno-param-assertions", "-Xno-call-assertions", "-Xno-receiver-assertions"
         )
     }
+}
+
+val syncThirdPartyNotices by tasks.registering(Copy::class) {
+    val noticesFile = rootProject.file("THIRD_PARTY_NOTICES.md")
+    doFirst {
+        if (!noticesFile.exists()) {
+            throw GradleException("Missing required file: ${noticesFile.absolutePath}")
+        }
+    }
+    from(noticesFile)
+    into(file("src/main/assets"))
+    rename { "THIRD_PARTY_NOTICES.md" }
+}
+
+tasks.named("preBuild") {
+    dependsOn(syncThirdPartyNotices)
 }
 
 dependencies {

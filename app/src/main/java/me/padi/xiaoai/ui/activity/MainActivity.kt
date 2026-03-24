@@ -3,6 +3,7 @@
 package com.mercury.xiaoaiimport.ui.activity
 
 import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.os.Bundle
@@ -177,7 +178,7 @@ class MainActivity : AppViewsActivity() {
                             ellipsize = TextUtils.TruncateAt.END
                             textColor = colorResource(R.color.white)
                             textSize = 13f
-                            text = "- Your custom text here -"
+                            text = "- 请在超级小爱种点击导入以使用本模块 -"
                         }
                         TextView(
                             lparams = LayoutParams { 
@@ -284,6 +285,19 @@ class MainActivity : AppViewsActivity() {
                         Layout(createPromotionItem(R.string.about_module, R.mipmap.ic_yukihookapi))
                         Space(lparams = LayoutParams(height = 10.dp))
                         Layout(createPromotionItem(R.string.about_module_extension, R.mipmap.ic_kavaref))
+                        Space(lparams = LayoutParams(height = 10.dp))
+                        Layout(createPromotionItem(R.string.about_shiguang_warehouse, R.mipmap.ic_github))
+                        Space(lparams = LayoutParams(height = 10.dp))
+                        Layout(createPromotionItem(R.string.about_ai_schedule_import_app, R.mipmap.ic_github))
+                        Space(lparams = LayoutParams(height = 10.dp))
+                        Layout(
+                            createPromotionItem(
+                                R.string.about_open_source_notices,
+                                R.mipmap.ic_github
+                            ) {
+                                startActivity(Intent(this@MainActivity, OpenSourceNoticesActivity::class.java))
+                            }
+                        )
                     }
                 }
             }
@@ -292,7 +306,8 @@ class MainActivity : AppViewsActivity() {
 
     private fun createPromotionItem(
         @StringRes stringResource: Int,
-        @DrawableRes imageResource: Int
+        @DrawableRes imageResource: Int,
+        onClick: (() -> Unit)? = null
     ) = Hikageable<MarginLayoutParams> {
         LinearLayout(
             lparams = LayoutParams(widthMatchParent = true) {
@@ -302,6 +317,11 @@ class MainActivity : AppViewsActivity() {
                 gravity = Gravity.CENTER or Gravity.START
                 setBackgroundResource(R.drawable.bg_permotion_round)
                 setPadding(10.dp)
+                if (onClick != null) {
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { onClick.invoke() }
+                }
             }
         ) {
             ImageView(

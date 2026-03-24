@@ -36,6 +36,10 @@
                 <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ui.activity.OpenSourceNoticesActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".screen.AiScreen"

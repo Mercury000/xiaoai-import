@@ -3,6 +3,10 @@
     <string name="xposed_desc">这是一个小爱课程表修复模块</string>
     <string name="about_module">This Xposed Module is made by YukiHookAPI. \nLearn more https://github.com/HighCapable/YuKiHookAPI</string>
     <string name="about_module_extension">This Xposed Module is powered by KavaRef.\nLearn more https://github.com/HighCapable/KavaRef</string>
+    <string name="about_shiguang_warehouse">Uses adapter index/resources from shiguang_warehouse (MIT License).\nhttps://github.com/XingHeYuZhuan/shiguang_warehouse</string>
+    <string name="about_ai_schedule_import_app">References ai-schedule-import-app project (MIT License).\nhttps://gitee.com/litedream/ai-schedule-import-app</string>
+    <string name="about_open_source_notices">Open source notices for all integrated dependencies.\nTap to view packaged THIRD_PARTY_NOTICES.</string>
+    <string name="open_source_notices_title">Open Source Notices</string>
     <string name="module_version">Module version: %1$s</string>
     <string name="module_not_activated">Module not activated</string>
     <string name="module_is_activated">Module is activated</string>

@@ -4,6 +4,10 @@
     <string name="xposed_desc">这是一个小爱课程表修复模块</string>
     <string name="about_module">此模块使用 YukiHookAPI 构建。\n了解更多 https://github.com/HighCapable/YuKiHookAPI</string>
     <string name="about_module_extension">此模块使用 KavaRef 强力驱动。\n了解更多 https://github.com/HighCapable/KavaRef</string>
+    <string name="about_shiguang_warehouse">使用 shiguang_warehouse 的适配索引与脚本资源（MIT License）。\nhttps://github.com/XingHeYuZhuan/shiguang_warehouse</string>
+    <string name="about_ai_schedule_import_app">参考 ai-schedule-import-app 项目（MIT License）。\nhttps://gitee.com/litedream/ai-schedule-import-app</string>
+    <string name="about_open_source_notices">项目使用的开源依赖声明（完整列表）。\n点击查看随安装包分发的 THIRD_PARTY_NOTICES。</string>
+    <string name="open_source_notices_title">开源声明</string>
     <string name="module_version">模块版本：%1$s</string>
     <string name="module_not_activated">模块未激活</string>
     <string name="module_is_activated">模块已激活</string>
