@@ -15,7 +15,6 @@ betterandroid-ui-component = "1.0.8"
 betterandroid-ui-component-adapter = "1.0.0"
 betterandroid-ui-extension = "1.0.7"
 betterandroid-system-extension = "1.0.3"
-dexkit = "2.0.7"
 drawabletoolbox = "1.0.7"
 okhttp = "5.3.0"
 androidx-core-ktx = "1.17.0"
@@ -47,7 +46,6 @@ betterandroid-ui-component = { group = "com.highcapable.betterandroid", name = "
 betterandroid-ui-component-adapter = { group = "com.highcapable.betterandroid", name = "ui-component-adapter", version.ref = "betterandroid-ui-component-adapter" }
 betterandroid-ui-extension = { group = "com.highcapable.betterandroid", name = "ui-extension", version.ref = "betterandroid-ui-extension" }
 betterandroid-system-extension = { group = "com.highcapable.betterandroid", name = "system-extension", version.ref = "betterandroid-system-extension" }
-dexkit = { group = "org.luckypray", name = "dexkit", version.ref = "dexkit" }
 drawabletoolbox = { group = "com.github.duanhong169", name = "drawabletoolbox", version.ref = "drawabletoolbox" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidx-core-ktx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "androidx-appcompat" }

@@ -244,7 +244,6 @@ dependencies {
     implementation(libs.betterandroid.system.extension)
 
     implementation(libs.drawabletoolbox)
-    implementation(libs.dexkit)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

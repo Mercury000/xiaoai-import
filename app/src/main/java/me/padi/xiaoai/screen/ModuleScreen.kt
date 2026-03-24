@@ -73,12 +73,6 @@ class ModuleScreen : BaseActivity() {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         
         // 捕获并保存 Token (从 WebAppInterface.navSchoolScreen 传来的 Intent)
-        val token = intent.getStringExtra("service_token")
-        val deviceId = intent.getStringExtra("device_id")
-        if (!token.isNullOrBlank() || !deviceId.isNullOrBlank()) {
-            HostCompat.saveTokens(this, token, deviceId)
-        }
-
         enableEdgeToEdge()
         setContent {
             MiuixTheme {

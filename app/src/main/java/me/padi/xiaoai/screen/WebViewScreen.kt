@@ -365,14 +365,6 @@ private fun WebViewScreenContent(intent: Intent) {
         Log.d("WebViewScreen", "开始 processHtmlForAi, html 长度: ${html.length}")
         coroutineScope.launch {
             try {
-                val serviceToken = HostCompat.getAccessToken(context)
-                val deviceId = HostCompat.getDeviceId(context)
-                if (serviceToken == null || deviceId == null) {
-                    aiParsingInProgress = false
-                    importState = ImportState.Error("无法获取令牌")
-                    return@launch
-                }
-
                 withContext(Dispatchers.IO) {
                     val prefs = context.writablePrefs()
                     val apiKey = prefs.getString("api_key", "") ?: ""

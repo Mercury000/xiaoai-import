@@ -6,7 +6,6 @@ import android.os.Build
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import de.robv.android.xposed.XposedBridge
-import com.mercury.xiaoaiimport.HostCompat
 import top.sacz.xphelper.XpHelper
 
 object VoiceAssistHook : YukiBaseHooker() {
@@ -28,24 +27,9 @@ object VoiceAssistHook : YukiBaseHooker() {
             after {
                 val context = instance<Context>()
                 val loader = context.classLoader
-                HostCompat.hostLoader = loader
-                lsp("Application.attach hooked, hostLoader saved")
                 val processName = currentProcessName(context)
                 lsp("process=$processName")
-
-                val hostVersion = requireNotNull(
-                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                ) { "host versionName is null" }
-                val sourceDir = context.applicationInfo.sourceDir
-                lsp("host=${context.packageName}, version=$hostVersion")
-
-                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "token_class") {
-                    SmaliAnalyzer.findTokenClass(context, sourceDir)
-                }
-
-                SmaliAnalyzer.getOrResolveClass(context, hostVersion, "device_class") {
-                    SmaliAnalyzer.findDeviceClass(context, sourceDir)
-                }
+                lsp("host=${context.packageName}")
 
                 "com.xiaomi.voiceassistant.web.container.AiWebActivity"
                     .toClass(loader).resolve()
