@@ -119,7 +119,7 @@
                 android:alpha="0.8"
                 android:ellipsize="end"
                 android:singleLine="true"
-                android:text="- 请在超级小爱种点击导入以使用本模块 -"
+                android:text="- 请在超级小爱中点击导入以使用本模块 -"
                 android:textColor="@color/white"
                 android:textSize="13sp" />
 

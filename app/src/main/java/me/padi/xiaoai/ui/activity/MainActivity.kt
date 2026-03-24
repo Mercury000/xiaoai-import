@@ -178,7 +178,7 @@ class MainActivity : AppViewsActivity() {
                             ellipsize = TextUtils.TruncateAt.END
                             textColor = colorResource(R.color.white)
                             textSize = 13f
-                            text = "- 请在超级小爱种点击导入以使用本模块 -"
+                            text = "- 请在超级小爱中点击导入以使用本模块 -"
                         }
                         TextView(
                             lparams = LayoutParams { 
