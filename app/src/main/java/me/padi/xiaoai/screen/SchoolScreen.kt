@@ -60,7 +60,6 @@ import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.ApiClient
 import com.mercury.xiaoaiimport.HostCompat
 import com.mercury.xiaoaiimport.ParseResult
-import com.mercury.xiaoaiimport.CourseRepository
 import com.mercury.xiaoaiimport.openCoursePreviewScreen
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.ShiguangAdapterEntry

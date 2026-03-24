@@ -15,19 +15,10 @@ object HostCompat {
     var hostLoader: ClassLoader? = null
 
     @Volatile
-    var isImportFinished: Boolean = false
-
-    @Volatile
-    var importTargetTableId: Long? = null
-
-    @Volatile
     var pendingCourseConfigJson: String? = null
 
     @Volatile
     var pendingTimeSlotSectionsJson: String? = null
-
-    @Volatile
-    var importSourceActiveSettingStr: String? = null
 
     private fun getCachedClassName(context: Context?, key: String): String? {
         return context?.getSharedPreferences("hook_cache", Context.MODE_PRIVATE)?.getString(key, null)
@@ -36,8 +27,6 @@ object HostCompat {
     fun isLogin(context: Context? = null): Boolean {
         return !getAccessToken(context).isNullOrBlank()
     }
-
-    fun getAppId(): String = "326813440150602752"
 
     fun getAccessToken(context: Context? = null, loader: ClassLoader? = null, forceRefresh: Boolean = false): String? {
         val effectiveLoader = loader ?: hostLoader ?: return null

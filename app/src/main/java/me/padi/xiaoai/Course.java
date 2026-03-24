@@ -7,7 +7,6 @@ public class Course {
     public int day;
     public String sections;
     public String weeks;
-    public String style; // Color JSON
 
     public boolean isInvalid = false;
     public boolean nameInvalid = false;

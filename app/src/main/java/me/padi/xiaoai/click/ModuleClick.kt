@@ -11,7 +11,6 @@ import com.kongzue.dialogx.util.InputInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.mercury.xiaoaiimport.ApiClient.COLOR_PRESETS
 import com.mercury.xiaoaiimport.Course
 import com.mercury.xiaoaiimport.openCoursePreviewScreen
 import com.mercury.xiaoaiimport.ScheduleConfig
@@ -20,7 +19,6 @@ import com.mercury.xiaoaiimport.screen.AiScreen
 import com.mercury.xiaoaiimport.screen.JwSystemScreen
 import org.json.JSONArray
 import org.json.JSONObject
-import kotlin.math.abs
 
 fun importCourseFormJw(context: Context) {
     val intent = Intent(context, JwSystemScreen::class.java)
@@ -72,8 +70,6 @@ fun openJsonImportDialog(context: Context) {
                     c.weeks = parseWeeks(obj)
 
                     c.sanitizeAndValidate()
-                    val colorIndex = if (c.name.isNotEmpty()) abs(c.name.hashCode() % COLOR_PRESETS.size) else i % COLOR_PRESETS.size
-                    c.style = COLOR_PRESETS[colorIndex]
                     courses.add(c)
                 }
 

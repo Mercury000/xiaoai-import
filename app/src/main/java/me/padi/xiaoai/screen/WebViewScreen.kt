@@ -534,8 +534,6 @@ private fun WebViewScreenContent(intent: Intent) {
                             } else courseJson.optString("weeks", "")
 
                             c.sanitizeAndValidate()
-                            val colorIndex = if (c.name.isNotEmpty()) kotlin.math.abs(c.name.hashCode() % ApiClient.COLOR_PRESETS.size) else i % ApiClient.COLOR_PRESETS.size
-                            c.style = ApiClient.COLOR_PRESETS[colorIndex]
                             courses.add(c)
                         }
 
@@ -855,8 +853,6 @@ private fun WebViewScreenContent(intent: Intent) {
                         onClick = {
                             HostCompat.pendingCourseConfigJson = null
                             HostCompat.pendingTimeSlotSectionsJson = null
-                            HostCompat.importTargetTableId = null
-                            HostCompat.importSourceActiveSettingStr = null
                             importState = ImportState.Loading("脚本启动中...")
                             Log.d("WebViewScreen", "开始点击解析, webViewRef is ${if(webViewRef == null) "NULL" else "NOT NULL"}")
                             

@@ -36,7 +36,6 @@ fun Intent.readPreviewCourses(): List<Course> {
                         day = obj.optInt("day", 1)
                         sections = obj.optString("sections")
                         weeks = obj.optString("weeks")
-                        style = obj.optString("style")
                         sanitizeAndValidate()
                     }
                 )
@@ -70,7 +69,6 @@ private fun coursesToJson(courses: List<Course>): JSONArray {
                 .put("day", c.day)
                 .put("sections", c.sections)
                 .put("weeks", c.weeks)
-                .put("style", c.style)
         )
     }
     return arr

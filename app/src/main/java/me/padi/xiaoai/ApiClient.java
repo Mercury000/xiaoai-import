@@ -1,23 +1,12 @@
 package com.mercury.xiaoaiimport;
 
-import android.util.Base64;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.text.SimpleDateFormat;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.Calendar;
-import java.util.Locale;
-import java.util.TimeZone;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Callback;
@@ -36,10 +25,7 @@ public class ApiClient {
     public static final String SEC_CH_UA_MOBILE = "?1";
     public static final String SEC_CH_UA_PLATFORM = "\"Android\"";
 
-    private static final String APP_ID = "326813440150602752";
     private static final String BASE_URL = "https://i.ai.mi.com";
-    private static final String SOURCE_NAME = "course-app-aiSchedule";
-    private static final String X_REQUESTED_WITH = "com.xiaomi.aischedule";
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -61,128 +47,7 @@ public class ApiClient {
             })
             .build();
 
-    private static Object findFirstSetting(JSONObject sourceObj, String... keys) {
-        for (String key : keys) {
-            if (sourceObj.has(key) && !sourceObj.isNull(key)) {
-                return sourceObj.opt(key);
-            }
-        }
-        return null;
-    }
-
-    private static Integer coerceInt(Object value) {
-        if (value == null) return null;
-        if (value instanceof Number) return ((Number) value).intValue();
-        try {
-            String text = String.valueOf(value).trim();
-            if (text.isEmpty()) return null;
-            return Integer.parseInt(text);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static int firstNumber(String csv, int fallback) {
-        if (csv == null) return fallback;
-        try {
-            String[] parts = csv.split(",");
-            for (String part : parts) {
-                String text = part.trim();
-                if (!text.isEmpty()) {
-                    return Integer.parseInt(text);
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return fallback;
-    }
-
-    private static Long parseSemesterStartMillis(Object value) {
-        if (value == null) return null;
-        try {
-            if (value instanceof Number) {
-                long numeric = ((Number) value).longValue();
-                return numeric > 0 && numeric < 100000000000L ? numeric * 1000L : numeric;
-            }
-
-            String text = String.valueOf(value).trim();
-            if (text.isEmpty()) return null;
-            try {
-                long numeric = Long.parseLong(text);
-                return numeric > 0 && numeric < 100000000000L ? numeric * 1000L : numeric;
-            } catch (NumberFormatException ignored) {
-                SimpleDateFormat parser = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-                parser.setLenient(false);
-                parser.setTimeZone(TimeZone.getDefault());
-                java.util.Date date = parser.parse(text);
-                if (date == null) return null;
-                Calendar calendar = Calendar.getInstance(TimeZone.getDefault());
-                calendar.setTime(date);
-                calendar.set(Calendar.HOUR_OF_DAY, 8);
-                calendar.set(Calendar.MINUTE, 0);
-                calendar.set(Calendar.SECOND, 0);
-                calendar.set(Calendar.MILLISECOND, 0);
-                return calendar.getTimeInMillis();
-            }
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static Integer calculatePresentWeekFromStart(Object startValue, Integer totalWeek) {
-        if (startValue == null) return null;
-        try {
-            String text = String.valueOf(startValue).trim();
-            if (text.isEmpty()) return null;
-
-            Calendar startCal = Calendar.getInstance(TimeZone.getDefault());
-            if (text.matches("^\\d+$")) {
-                Long millis = parseSemesterStartMillis(startValue);
-                if (millis == null || millis <= 0) return null;
-                startCal.setTimeInMillis(millis);
-            } else {
-                SimpleDateFormat parser = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-                parser.setLenient(false);
-                parser.setTimeZone(TimeZone.getDefault());
-                java.util.Date date = parser.parse(text);
-                if (date == null) return null;
-                startCal.setTime(date);
-            }
-            startCal.set(Calendar.HOUR_OF_DAY, 0);
-            startCal.set(Calendar.MINUTE, 0);
-            startCal.set(Calendar.SECOND, 0);
-            startCal.set(Calendar.MILLISECOND, 0);
-
-            Calendar todayCal = Calendar.getInstance(TimeZone.getDefault());
-            todayCal.set(Calendar.HOUR_OF_DAY, 0);
-            todayCal.set(Calendar.MINUTE, 0);
-            todayCal.set(Calendar.SECOND, 0);
-            todayCal.set(Calendar.MILLISECOND, 0);
-
-            long diffDays = (todayCal.getTimeInMillis() - startCal.getTimeInMillis()) / (24L * 60L * 60L * 1000L);
-            int week = (int) Math.max(1L, diffDays / 7L + 1L);
-            if (totalWeek != null && totalWeek > 0) week = Math.min(week, totalWeek);
-            return week;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
     private static final MediaType JSON_TYPE = MediaType.parse("application/json; charset=utf-8");
-    public static final String[] COLOR_PRESETS = {
-            "{\"color\":\"#00A6F2\",\"background\":\"#E5F4FF\"}",
-            "{\"color\":\"#FC6B50\",\"background\":\"#FDEBDE\"}",
-            "{\"color\":\"#3CB3C8\",\"background\":\"#DEFBF8\"}",
-            "{\"color\":\"#7D7AEA\",\"background\":\"#EDEDFF\"}",
-            "{\"color\":\"#FF9900\",\"background\":\"#FCEBCD\"}",
-            "{\"color\":\"#EF5B75\",\"background\":\"#FFEFF0\"}",
-            "{\"color\":\"#5B8EFF\",\"background\":\"#EAF1FF\"}",
-            "{\"color\":\"#F067BB\",\"background\":\"#FFEDF8\"}",
-            "{\"color\":\"#29BBAA\",\"background\":\"#E2F8F3\"}",
-            "{\"color\":\"#CBA713\",\"background\":\"#FFF8C8\"}",
-            "{\"color\":\"#B967E3\",\"background\":\"#F9EDFF\"}",
-            "{\"color\":\"#6E8ADA\",\"background\":\"#F3F2FD\"}"
-    };
 
     public static final String SYSTEM_PROMPT =
             "你是一个专业的大学课表解析助手。\n" +
@@ -317,8 +182,6 @@ public class ApiClient {
     public static ParseResult parseJsonToResult(JSONObject fullResponseJson) throws Exception {
         ParseResult parseResult = new ParseResult();
         List<Course> list = new ArrayList<>();
-        Map<String, String> styleMap = new HashMap<>();
-        int colorIdx = 0;
 
         if (!fullResponseJson.has("courses")) {
             throw new Exception("缺失必填的核心大纲字段：未找到 'courses' (课程列表) 字段。模型可能未能理解或遇到了空课表。");
@@ -363,11 +226,6 @@ public class ApiClient {
 
             if (!c.name.isEmpty()) {
                 c.sanitizeAndValidate();
-                if (!styleMap.containsKey(c.name)) {
-                    styleMap.put(c.name, COLOR_PRESETS[colorIdx % 12]);
-                    colorIdx++;
-                }
-                c.style = styleMap.get(c.name);
                 list.add(c);
             } else {
                 c.name = "(未命名课程)";
@@ -375,11 +233,6 @@ public class ApiClient {
                 c.isInvalid = true;
                 c.nameInvalid = true;
                 c.invalidReason += "必填字段: name(课程名) 缺失；";
-                if (!styleMap.containsKey(c.name)) {
-                    styleMap.put(c.name, COLOR_PRESETS[colorIdx % 12]);
-                    colorIdx++;
-                }
-                c.style = styleMap.get(c.name);
                 list.add(c);
             }
         }
@@ -403,423 +256,6 @@ public class ApiClient {
         }
         return parseResult;
     }
-
-    public static void uploadCoursesAll(List<Course> courses, long ctId, String appId,
-                                        String serviceToken, String deviceId) throws Exception {
-        List<Course> sortedCourses = new ArrayList<>(courses);
-        Collections.sort(sortedCourses, new Comparator<Course>() {
-            @Override
-            public int compare(Course a, Course b) {
-                int byDay = Integer.compare(a.day, b.day);
-                if (byDay != 0) return byDay;
-
-                int bySection = Integer.compare(
-                        firstNumber(a.sections, Integer.MAX_VALUE),
-                        firstNumber(b.sections, Integer.MAX_VALUE)
-                );
-                if (bySection != 0) return bySection;
-
-                int byWeek = Integer.compare(
-                        firstNumber(a.weeks, Integer.MAX_VALUE),
-                        firstNumber(b.weeks, Integer.MAX_VALUE)
-                );
-                if (byWeek != 0) return byWeek;
-
-                int bySectionsText = String.valueOf(a.sections).compareTo(String.valueOf(b.sections));
-                if (bySectionsText != 0) return bySectionsText;
-
-                return String.valueOf(a.weeks).compareTo(String.valueOf(b.weeks));
-            }
-        });
-
-        JSONArray courseArray = new JSONArray();
-        for (Course course : sortedCourses) {
-            String styleStr = course.style != null ? course.style : COLOR_PRESETS[0];
-            JSONObject courseObj = new JSONObject()
-                    .put("name", course.name)
-                    .put("position", course.position)
-                    .put("teacher", course.teacher)
-                    .put("day", course.day)
-                    .put("sections", course.sections)
-                    .put("style", styleStr)
-                    .put("weeks", course.weeks)
-                    .put("extend", "");
-            courseArray.put(courseObj);
-        }
-
-        JSONObject body = new JSONObject()
-                .put("ctId", ctId)
-                .put("courses", courseArray)
-                .put("sourceName", SOURCE_NAME);
-
-        String requestId = UUID.randomUUID().toString().replace("-", "").toUpperCase();
-        Request req = new Request.Builder()
-                .url(BASE_URL + "/course-multi-auth/courseInfos")
-                .header("Authorization", buildAuth(appId, serviceToken, deviceId))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("RequestId", requestId)
-                .header("Origin", BASE_URL)
-                .header("X-Requested-With", X_REQUESTED_WITH)
-                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
-                .header("sec-ch-ua", SEC_CH_UA)
-                .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
-                .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
-                .header("Access-Control-Allow-Origin", "true")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917")
-                .post(RequestBody.create(body.toString(), JSON_TYPE))
-                .build();
-
-        try (Response resp = CLIENT.newCall(req).execute()) {
-            String raw = resp.body() != null ? resp.body().string() : "";
-            if (resp.code() == 401) throw new UnauthorizedException("Token expired");
-            if (!resp.isSuccessful()) throw new Exception(resp.code() + ": " + raw);
-            JSONObject json = new JSONObject(raw);
-
-            if (json.has("status") && json.optInt("status") == -1) {
-                throw new Exception("批量创建失败: status=-1 (可能课程参数不合法)");
-            }
-
-            int code = json.optInt("code", 0);
-            if (code != 0 && code != 200) {
-                String desc = json.optString("desc", json.optString("msg", "未知错误"));
-                throw new Exception(desc);
-            }
-        }
-    }
-
-    private static String buildAuth(String appId, String serviceToken, String deviceId) {
-        // 如果是宿主已经构建好的完整 Authorization header，直接透传
-        if (serviceToken != null && (
-                serviceToken.startsWith("DO-TOKEN") ||
-                serviceToken.startsWith("AO-TOKEN") ||
-                serviceToken.startsWith("Bearer ") ||
-                serviceToken.contains("app_id:") ||
-                serviceToken.contains("access_token:"))) {
-            return serviceToken;
-        }
-        try {
-            String scopeJson = "{\"d\":\"" + deviceId + "\"}";
-            String scopeData = Base64.encodeToString(scopeJson.getBytes("UTF-8"), Base64.NO_WRAP);
-            String auth = "DO-TOKEN-V1 app_id:" + appId + ",scope_data:" + scopeData + ",access_token:" + serviceToken;
-            return auth;
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    public static List<CourseTable> fetchTables(String appId, String serviceToken, String deviceId) throws Exception {
-        String url = BASE_URL + "/course-multi-auth/tables?requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + SOURCE_NAME;
-        Request req = new Request.Builder()
-                .url(url)
-                .header("Authorization", buildAuth(appId, serviceToken, deviceId))
-                .header("Accept", "*/*")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36")
-                .header("X-Requested-With", X_REQUESTED_WITH)
-                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
-                .get()
-                .build();
-        try (Response resp = CLIENT.newCall(req).execute()) {
-            String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful()) {
-                if (resp.code() == 401) throw new UnauthorizedException("Token expired");
-                if (resp.code() == 500) {
-                    throw new Exception("HTTP 500: auth invalid, please refresh user info");
-                }
-                throw new Exception("fetchTables failed (HTTP " + resp.code() + ")");
-            }
-            JSONObject json = new JSONObject(raw);
-            if (json.optInt("code", -1) != 0)
-                throw new Exception(json.optString("desc", "fetchTables failed"));
-            JSONArray data = json.getJSONArray("data");
-            List<CourseTable> list = new ArrayList<>();
-            for (int i = 0; i < data.length(); i++) {
-                JSONObject o = data.getJSONObject(i);
-                CourseTable t = new CourseTable();
-                t.id = o.getLong("id");
-                t.name = o.optString("name", "Untitled");
-                Object curObj = o.opt("current");
-                if (curObj instanceof Boolean) {
-                    t.current = ((Boolean) curObj) ? 1 : 0;
-                } else {
-                    t.current = o.optInt("current", 0);
-                }
-                if (o.has("setting")) t.settingStr = o.getJSONObject("setting").toString();
-                list.add(t);
-            }
-            return list;
-        }
-    }
-
-    public static void fetchTableDetail(CourseTable table, String appId, String serviceToken, String deviceId) throws Exception {
-        String url = BASE_URL + "/course-multi-auth/table?ctId=" + table.id + "&requestId=" + UUID.randomUUID().toString().replace("-", "").toUpperCase() + "&sourceName=" + SOURCE_NAME;
-        Request req = new Request.Builder()
-                .url(url)
-                .header("Authorization", buildAuth(appId, serviceToken, deviceId))
-                .header("Accept", "*/*")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36")
-                .header("X-Requested-With", X_REQUESTED_WITH)
-                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
-                .get()
-                .build();
-        try (Response resp = CLIENT.newCall(req).execute()) {
-            String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful())
-                throw new Exception("查询课表详情失败(HTTP " + resp.code() + ")");
-            JSONObject json = new JSONObject(raw);
-            if (json.optInt("code", -1) != 0)
-                throw new Exception(json.optString("desc", "查询课表详情失败"));
-            JSONObject data = json.getJSONObject("data");
-            table.name = data.optString("name", table.name);
-            if (data.has("setting")) table.settingStr = data.getJSONObject("setting").toString();
-            table.existingCourseIds.clear();
-            if (data.has("courses")) {
-                JSONArray arr = data.getJSONArray("courses");
-                for (int i = 0; i < arr.length(); i++) {
-                    table.existingCourseIds.add(arr.getJSONObject(i).getLong("id"));
-                }
-            }
-        }
-    }
-
-    public static void deleteCourse(long ctId, long cId, String appId, String serviceToken, String deviceId) throws Exception {
-        JSONObject body = new JSONObject().put("ctId", ctId).put("cId", cId).put("sourceName", SOURCE_NAME);
-        Request req = new Request.Builder()
-                .url(BASE_URL + "/course-multi-auth/courseInfo")
-                .header("Authorization", buildAuth(appId, serviceToken, deviceId))
-                .header("Content-Type", "application/json")
-                .header("X-Requested-With", X_REQUESTED_WITH)
-                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
-                .delete(RequestBody.create(body.toString(), JSON_TYPE))
-                .build();
-        try (Response resp = CLIENT.newCall(req).execute()) {
-            if (!resp.isSuccessful())
-                throw new Exception("删除旧课表失败(HTTP " + resp.code() + ")");
-        }
-    }
-
-    public static long createTable(String name, String appId, String serviceToken, String deviceId) throws Exception {
-        JSONObject body = new JSONObject().put("name", name).put("current", 0).put("sourceName", SOURCE_NAME);
-        Request req = new Request.Builder()
-                .url(BASE_URL + "/course-multi-auth/table")
-                .header("Authorization", buildAuth(appId, serviceToken, deviceId))
-                .header("Content-Type", "application/json")
-                .header("X-Requested-With", X_REQUESTED_WITH)
-                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
-                .header("sec-ch-ua", SEC_CH_UA)
-                .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
-                .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
-                .header("Access-Control-Allow-Origin", "true")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.14 Mobile Safari/537.36 MIAI/7.512.1.0917")
-                .post(RequestBody.create(body.toString(), JSON_TYPE))
-                .build();
-        try (Response resp = CLIENT.newCall(req).execute()) {
-            String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful()) {
-                if (resp.code() == 401) throw new UnauthorizedException("Token expired");
-                if (resp.code() == 500) {
-                    throw new Exception("HTTP 500: auth invalid or server error");
-                }
-                throw new Exception("createTable failed (HTTP " + resp.code() + ")");
-            }
-            JSONObject json = new JSONObject(raw);
-            if (json.optInt("code", -1) != 0) {
-                String desc = json.optString("desc", "createTable failed");
-                if (desc.toLowerCase().contains("repeat")) {
-                    android.util.Log.w("ApiClient", "createTable repeat detected, recovering existing table: " + name);
-                    List<CourseTable> existing = fetchTables(appId, serviceToken, deviceId);
-                    for (CourseTable t : existing) {
-                        if (name.equals(t.name)) {
-                            android.util.Log.i("ApiClient", "Reusing existing table id=" + t.id);
-                            return t.id;
-                        }
-                    }
-                }
-                throw new Exception(desc);
-            }
-            return json.getLong("data");
-        }
-    }
-
-    public static void updateTableSettings(long ctId, String name, String sourceSettingStr, String originalSettingStr, ScheduleConfig customSchedule, String appId, String serviceToken, String deviceId) throws Exception {
-        if (originalSettingStr == null || originalSettingStr.isEmpty()) return;
-
-        JSONObject sourceObj = new JSONObject(sourceSettingStr == null || sourceSettingStr.isEmpty() ? "{}" : sourceSettingStr);
-        JSONObject origObj = new JSONObject(originalSettingStr);
-        JSONObject merged = new JSONObject();
-        boolean sourceLooksLikeTableSetting = sourceObj.has("id");
-
-        if (origObj.has("id")) {
-            merged.put("id", origObj.get("id"));
-        }
-
-        Object sourceStart = sourceLooksLikeTableSetting
-                ? findFirstSetting(sourceObj, "semesterStartDate", "startDate", "termStartDate")
-                : findFirstSetting(sourceObj, "startSemester", "semesterStartDate", "startDate", "termStartDate");
-        Long normalizedStartSemester = parseSemesterStartMillis(sourceStart);
-        String startSemester = null;
-        if (normalizedStartSemester != null) startSemester = String.valueOf(normalizedStartSemester);
-        else if (origObj.has("startSemester")) startSemester = String.valueOf(origObj.opt("startSemester"));
-        if (startSemester != null) merged.put("startSemester", startSemester);
-
-        Integer totalWeek = coerceInt(sourceLooksLikeTableSetting
-                ? findFirstSetting(sourceObj, "semesterTotalWeeks")
-                : findFirstSetting(sourceObj, "totalWeek", "semesterTotalWeeks"));
-        if (totalWeek == null) totalWeek = coerceInt(origObj.opt("totalWeek"));
-        if (totalWeek != null) merged.put("totalWeek", totalWeek);
-
-        Integer weekStart = coerceInt(sourceLooksLikeTableSetting
-                ? findFirstSetting(sourceObj, "firstDayOfWeek")
-                : findFirstSetting(sourceObj, "weekStart", "firstDayOfWeek"));
-        if (weekStart == null) weekStart = coerceInt(origObj.opt("weekStart"));
-        if (weekStart != null) merged.put("weekStart", weekStart);
-
-        Integer presentWeek = calculatePresentWeekFromStart(sourceStart, totalWeek);
-        if (presentWeek == null) {
-            presentWeek = coerceInt(sourceLooksLikeTableSetting
-                    ? findFirstSetting(sourceObj, "currentWeek")
-                    : findFirstSetting(sourceObj, "presentWeek", "currentWeek"));
-        }
-        if (presentWeek == null) presentWeek = coerceInt(origObj.opt("presentWeek"));
-        if (presentWeek != null) merged.put("presentWeek", presentWeek);
-
-        String[] exactKeys = {"isWeekend", "morningNum", "afternoonNum", "nightNum", "speak"};
-        for (String key : exactKeys) {
-            Object value = sourceObj.has(key) ? sourceObj.opt(key) : origObj.opt(key);
-            if (value != null && !JSONObject.NULL.equals(value)) {
-                merged.put(key, value);
-            }
-        }
-
-        String sections = null;
-        if (sourceObj.has("sections")) {
-            Object secObj = sourceObj.get("sections");
-            sections = secObj instanceof String ? (String) secObj : secObj.toString();
-        } else if (sourceObj.has("sectionTimes")) {
-            Object stObj = sourceObj.get("sectionTimes");
-            sections = stObj instanceof String ? (String) stObj : stObj.toString();
-        } else if (origObj.has("sections")) {
-            Object secObj = origObj.get("sections");
-            sections = secObj instanceof String ? (String) secObj : secObj.toString();
-        } else if (origObj.has("sectionTimes")) {
-            Object stObj = origObj.get("sectionTimes");
-            sections = stObj instanceof String ? (String) stObj : stObj.toString();
-        }
-        if (customSchedule != null) {
-            if (customSchedule.morningNum != null) merged.put("morningNum", customSchedule.morningNum);
-            if (customSchedule.afternoonNum != null) merged.put("afternoonNum", customSchedule.afternoonNum);
-            if (customSchedule.nightNum != null) merged.put("nightNum", customSchedule.nightNum);
-            if (customSchedule.sections != null && !customSchedule.sections.isEmpty()) {
-                sections = customSchedule.sections;
-            }
-        }
-        if (sections != null && !sections.isEmpty()) {
-            merged.put("sections", sections);
-        }
-
-        String school = sourceObj.optString("school", origObj.optString("school", "{}"));
-        if (school.isEmpty()) school = "{}";
-        merged.put("school", school);
-
-        JSONObject origExt = new JSONObject();
-        try {
-            Object origExtVal = origObj.opt("extend");
-            String origExtStr = origExtVal instanceof String ? (String) origExtVal : (origExtVal != null ? origExtVal.toString() : "{}");
-            origExt = new JSONObject(origExtStr.isEmpty() ? "{}" : origExtStr);
-        } catch (Exception ignored) {}
-        JSONObject sourceExt = new JSONObject();
-        try {
-            Object srcExtVal = sourceObj.opt("extend");
-            String srcExtStr = srcExtVal instanceof String ? (String) srcExtVal : (srcExtVal != null ? srcExtVal.toString() : "{}");
-            sourceExt = new JSONObject(srcExtStr.isEmpty() ? "{}" : srcExtStr);
-        } catch (Exception ignored) {}
-
-        JSONObject mergedExt = new JSONObject();
-        if (startSemester != null) {
-            try {
-                mergedExt.put("startSemester", Long.parseLong(startSemester));
-            } catch (Exception ignored) {
-                mergedExt.put("startSemester", startSemester);
-            }
-        }
-        String degree = sourceExt.optString("degree", origExt.optString("degree", "本科/专科"));
-        mergedExt.put("degree", degree.isEmpty() ? "本科/专科" : degree);
-        boolean showNotInWeek = sourceExt.has("showNotInWeek") ? sourceExt.optBoolean("showNotInWeek", true) : origExt.optBoolean("showNotInWeek", true);
-        mergedExt.put("showNotInWeek", showNotInWeek);
-        Object bgSetting = sourceExt.has("bgSetting") ? sourceExt.opt("bgSetting") : origExt.opt("bgSetting");
-        if (bgSetting == null || JSONObject.NULL.equals(bgSetting)) {
-            bgSetting = new JSONObject().put("name", "default").put("opacity", 1);
-        }
-        mergedExt.put("bgSetting", bgSetting);
-        merged.put("extend", mergedExt.toString());
-
-        JSONObject body = new JSONObject()
-                .put("ctId", ctId)
-                .put("name", name)
-                .put("setting", merged)
-                .put("sourceName", SOURCE_NAME);
-
-        String requestId = UUID.randomUUID().toString().replace("-", "").toUpperCase();
-        Request req = new Request.Builder()
-                .url(BASE_URL + "/course-multi-auth/table")
-                .header("Authorization", buildAuth(appId, serviceToken, deviceId))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("Origin", BASE_URL)
-                .header("RequestId", requestId)
-                .header("sec-ch-ua", "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Android WebView\";v=\"146\"")
-                .header("sec-ch-ua-mobile", SEC_CH_UA_MOBILE)
-                .header("sec-ch-ua-platform", SEC_CH_UA_PLATFORM)
-                .header("Access-Control-Allow-Origin", "true")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; 23113RKC6C Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/146.0.7680.14 Mobile Safari/537.36 AgentWeb/4.1.3  UCBrowser/11.6.4.950")
-                .header("X-Requested-With", X_REQUESTED_WITH)
-                .header("Referer", BASE_URL + "/h5/precache/ai-schedule/")
-                .put(RequestBody.create(body.toString(), JSON_TYPE))
-                .build();
-
-        try (Response resp = CLIENT.newCall(req).execute()) {
-            String raw = resp.body() != null ? resp.body().string() : "";
-            if (resp.code() == 401) throw new UnauthorizedException("Token expired");
-            if (!resp.isSuccessful()) throw new Exception("updateTableSettings failed HTTP " + resp.code() + ": " + raw);
-            if (!raw.isEmpty()) {
-                JSONObject json = new JSONObject(raw);
-                int code = json.optInt("code", 0);
-                if (code != 0 && code != 200) {
-                    throw new Exception(json.optString("desc", json.optString("msg", "updateTableSettings failed")));
-                }
-            }
-        }
-    }
-
-    public static void switchTable(long fromCtId, long toCtId, String appId, String serviceToken, String deviceId) throws Exception {
-        JSONObject body = new JSONObject()
-                .put("fromCtId", fromCtId)
-                .put("toCtId", toCtId)
-                .put("sourceName", "course-app-miui");
-        Request req = new Request.Builder()
-                .url("https://i.xiaomixiaoai.com/course-multi-auth/table_switch")
-                .header("Authorization", buildAuth(appId, serviceToken, deviceId))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Mobile Safari/537.36")
-                .header("Origin", "https://i.xiaomixiaoai.com")
-                .header("X-Requested-With", "com.miui.voiceassist")
-                .header("Referer", "https://i.xiaomixiaoai.com/h5/precache/ai-schedule/")
-                .post(RequestBody.create(body.toString(), JSON_TYPE))
-                .build();
-        try (Response resp = CLIENT.newCall(req).execute()) {
-            String raw = resp.body() != null ? resp.body().string() : "";
-            if (!resp.isSuccessful()) {
-                if (resp.code() == 401) throw new UnauthorizedException("Token expired");
-                throw new Exception("切换课表失败(HTTP " + resp.code() + "): " + raw);
-            }
-            JSONObject json = new JSONObject(raw);
-            int code = json.optInt("code", -1);
-            if (code != 0 && code != 200)
-                throw new Exception(json.optString("desc", json.optString("msg", "切换课表失败")));
-        }
-    }
-
     public static String translateJsonError(String msg) {
         if (msg == null) return "未知语法错误";
         if (msg.contains("Expected a ':' after a key")) return "键值对缺少冒号";
@@ -847,38 +283,12 @@ public class ApiClient {
         return sb.toString();
     }
 
-    private static String normalizeStartSemester(Object raw) {
-        if (raw == null) return null;
-        String s = String.valueOf(raw).trim();
-        if (s.isEmpty() || "null".equalsIgnoreCase(s)) return null;
-        if (s.matches("^\\d{10,13}$")) {
-            if (s.length() == 10) return s + "000";
-            return s;
-        }
-        String[] patterns = {"yyyy-MM-dd", "yyyy/MM/dd", "yyyy.M.d", "yyyy-M-d"};
-        for (String pattern : patterns) {
-            try {
-                SimpleDateFormat sdf = new SimpleDateFormat(pattern, Locale.US);
-                sdf.setLenient(false);
-                sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
-                long ts = sdf.parse(s).getTime();
-                return String.valueOf(ts);
-            } catch (Exception ignored) {}
-        }
-        return s;
-    }
-
     public static void fetchUpdateHtml(String url, Callback callback) {
         Request req = new Request.Builder()
                 .url(url)
                 .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36")
                 .build();
         CLIENT.newCall(req).enqueue(callback);
-    }
-    public static class UnauthorizedException extends Exception {
-        public UnauthorizedException(String message) {
-            super(message);
-        }
     }
 }
 

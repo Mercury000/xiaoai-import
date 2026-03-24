@@ -59,20 +59,6 @@ object VoiceAssistHook : YukiBaseHooker() {
                         }
                     }
 
-                "com.xiaomi.voiceassistant.web.container.AiWebActivity"
-                    .toClass(loader).resolve()
-                    .firstMethod {
-                        name = "onResume"
-                        parameterCount = 0
-                    }.hook {
-                        after {
-                            if (HostCompat.isImportFinished) {
-                                HostCompat.isImportFinished = false
-                                val activity = instance<android.app.Activity>()
-                                activity.recreate()
-                            }
-                        }
-                    }
             }
         }
     }

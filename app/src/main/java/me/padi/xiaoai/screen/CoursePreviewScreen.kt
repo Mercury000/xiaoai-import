@@ -349,7 +349,6 @@ private fun Course.copyCourse(): Course {
         c.day = day
         c.sections = sections
         c.weeks = weeks
-        c.style = style
         c.sanitizeAndValidate()
     }
 }
