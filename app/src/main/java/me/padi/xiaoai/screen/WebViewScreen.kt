@@ -340,7 +340,6 @@ private fun WebViewScreenContent(intent: Intent) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var url by remember { mutableStateOf(intentUrl.ifBlank { HookEntry.prefs.getString("jw_webview_url", "") }) }
     var lastLoadedUrl by remember { mutableStateOf(url) }
-    var tableName by remember { mutableStateOf("") }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
     val currentImportState by rememberUpdatedState(importState)
     var aiParsingInProgress by remember { mutableStateOf(false) }
@@ -391,9 +390,7 @@ private fun WebViewScreenContent(intent: Intent) {
                             override fun onSuccess(result: ParseResult) {
                                 coroutineScope.launch {
                                     try {
-                                        val previewName = tableName.ifBlank { "提取课表" }.trim()
                                         context.openCoursePreviewScreen(
-                                            tableName = previewName,
                                             courses = result.courses,
                                             schedule = result.schedule
                                         )
@@ -551,9 +548,7 @@ private fun WebViewScreenContent(intent: Intent) {
                             }
                         }
 
-                        val previewName = tableName.ifBlank { "提取课表" }.trim()
                         context.openCoursePreviewScreen(
-                            tableName = previewName,
                             courses = courses,
                             schedule = schedule
                         )
@@ -853,23 +848,11 @@ private fun WebViewScreenContent(intent: Intent) {
                 }
 
                 item {
-                    TextField(
-                        value = tableName,
-                        onValueChange = { tableName = it },
-                        label = "课表名称"
-                    )
-                }
-
-                item {
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
                         onClick = {
-                            if (tableName.isBlank()) {
-                                importState = ImportState.Error("请输入课表名称")
-                                return@Button
-                            }
                             HostCompat.pendingCourseConfigJson = null
                             HostCompat.pendingTimeSlotSectionsJson = null
                             HostCompat.importTargetTableId = null

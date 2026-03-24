@@ -6,24 +6,19 @@ import com.mercury.xiaoaiimport.screen.CoursePreviewScreen
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val EXTRA_TABLE_NAME = "preview_table_name"
 private const val EXTRA_COURSES_JSON = "preview_courses_json"
 private const val EXTRA_SCHEDULE_JSON = "preview_schedule_json"
 
 fun Context.openCoursePreviewScreen(
-    tableName: String,
     courses: List<Course>,
     schedule: ScheduleConfig? = null
 ) {
     val intent = Intent(this, CoursePreviewScreen::class.java).apply {
-        putExtra(EXTRA_TABLE_NAME, tableName)
         putExtra(EXTRA_COURSES_JSON, coursesToJson(courses).toString())
         putExtra(EXTRA_SCHEDULE_JSON, scheduleToJson(schedule))
     }
     startActivity(intent)
 }
-
-fun Intent.readPreviewTableName(): String = getStringExtra(EXTRA_TABLE_NAME).orEmpty()
 
 fun Intent.readPreviewCourses(): List<Course> {
     val raw = getStringExtra(EXTRA_COURSES_JSON).orEmpty()

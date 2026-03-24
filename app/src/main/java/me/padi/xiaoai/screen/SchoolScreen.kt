@@ -61,6 +61,7 @@ import com.mercury.xiaoaiimport.ApiClient
 import com.mercury.xiaoaiimport.HostCompat
 import com.mercury.xiaoaiimport.ParseResult
 import com.mercury.xiaoaiimport.CourseRepository
+import com.mercury.xiaoaiimport.openCoursePreviewScreen
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.ShiguangAdapterEntry
 import com.mercury.xiaoaiimport.parseShiguangSchoolIndexPb
@@ -387,7 +388,6 @@ private fun SchoolListScreenContent(
     var selectedSchool by remember { mutableStateOf<SchoolData?>(null) }
     var showBottomSheet by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf("") }
-    var tableName by remember { mutableStateOf("") }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
     var webViewLoading by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<NativeWebView?>(null) }
@@ -533,32 +533,16 @@ private fun SchoolListScreenContent(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    TextField(value = tableName, onValueChange = { tableName = it }, label = "课表名称")
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
                     Button(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
                         onClick = {
-                            if (tableName.isBlank()) {
-                                Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
                             importState = ImportState.Loading()
                             webViewRef?.evaluateJavascript("document.documentElement.outerHTML") { html ->
                                 // evaluateJavascript 返回的是 JSON 编码字符串（带外层引号和转义），需解码
                                 val rawHtml = try { org.json.JSONArray("[$html]").getString(0) } catch (_: Exception) { html }
                                 coroutineScope.launch {
                                     try {
-                                        val appId = HostCompat.getAppId()
-                                        val serviceToken = HostCompat.getAccessToken(context, HostCompat.hostLoader ?: context.classLoader)
-                                        val deviceId = HostCompat.getDeviceId(context, HostCompat.hostLoader ?: context.classLoader)
-                                        if (serviceToken.isNullOrBlank() || deviceId.isNullOrBlank()) {
-                                            importState = ImportState.Error("获取令牌失败")
-                                            return@launch
-                                        }
-
                                         val prefs = context.writablePrefs()
                                         val apiKey = prefs.getString("api_key", "") ?: ""
                                         val modelName = prefs.getString("model_name", "qwen3-coder-plus") ?: "qwen3-coder-plus"
@@ -576,18 +560,14 @@ private fun SchoolListScreenContent(
                                                     override fun onSuccess(result: ParseResult) {
                                                         coroutineScope.launch {
                                                             try {
-                                                                 importState = ImportState.Parsing()
-                                                                 CourseRepository.importCourses(
-                                                                     context,
-                                                                     appId,
-                                                                     tableName.trim(),
-                                                                     result.courses,
-                                                                     result.schedule
+                                                                 context.openCoursePreviewScreen(
+                                                                     courses = result.courses,
+                                                                     schedule = result.schedule
                                                                  )
-                                                                 importState = ImportState.Success("导入成功")
-                                                            } catch (e: Exception) {
+                                                                 importState = ImportState.Success("已进入预览，请确认导入")
+                                                             } catch (e: Exception) {
                                                                 importState = ImportState.Error(e.message ?: "导入报错")
-                                                            }
+                                                             }
                                                         }
                                                     }
                                                     override fun onError(e: Exception) {

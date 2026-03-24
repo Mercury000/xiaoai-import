@@ -85,9 +85,7 @@ fun openJsonImportDialog(context: Context) {
                         if (sObj.has("sections")) sections = sObj.optString("sections")
                     }
                 }
-                val parsedName = json.optString("name").trim()
                 context.openCoursePreviewScreen(
-                    tableName = if (parsedName.isBlank()) "提取课表" else parsedName,
                     courses = courses,
                     schedule = schedule
                 )

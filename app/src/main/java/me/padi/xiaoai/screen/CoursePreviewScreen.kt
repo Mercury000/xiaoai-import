@@ -38,12 +38,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.mercury.xiaoaiimport.Course
-import com.mercury.xiaoaiimport.CourseRepository
-import com.mercury.xiaoaiimport.HostCompat
+import com.mercury.xiaoaiimport.PresetDataLauncher
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.readPreviewCourses
 import com.mercury.xiaoaiimport.readPreviewSchedule
-import com.mercury.xiaoaiimport.readPreviewTableName
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -52,7 +50,6 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class CoursePreviewScreen : BaseActivity() {
@@ -61,7 +58,6 @@ class CoursePreviewScreen : BaseActivity() {
         enableEdgeToEdge()
         setContent {
             MiuixTheme {
-                val initialName = intent.readPreviewTableName().ifBlank { "提取课表" }
                 val initialCourses = intent.readPreviewCourses()
                 val initialSchedule = intent.readPreviewSchedule()
 
@@ -79,27 +75,23 @@ class CoursePreviewScreen : BaseActivity() {
                     )
                 )
 
-                var tableName by remember { mutableStateOf(initialName) }
                 var importing by remember { mutableStateOf(false) }
                 var message by remember { mutableStateOf("") }
                 val scope = rememberCoroutineScope()
 
                 fun startImport(finalCourses: List<Course>) {
                     importing = true
-                    message = "正在导入..."
+                    message = "正在唤起小爱..."
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) {
-                                CourseRepository.importCourses(
-                                    this@CoursePreviewScreen,
-                                    HostCompat.getAppId(),
-                                    tableName.trim(),
-                                    finalCourses.map { it.copyCourse() },
-                                    initialSchedule
+                            withContext(Dispatchers.Main) {
+                                PresetDataLauncher.launch(
+                                    context = this@CoursePreviewScreen,
+                                    courses = finalCourses.map { it.copyCourse() },
+                                    schedule = initialSchedule
                                 )
                             }
-                            message = "导入成功"
-                            finish()
+                            message = "已唤起小爱，请在小爱内继续导入"
                         } catch (e: Exception) {
                             message = "失败: ${e.message}"
                         } finally {
@@ -116,12 +108,6 @@ class CoursePreviewScreen : BaseActivity() {
                             .padding(padding)
                             .padding(horizontal = 16.dp)
                     ) {
-                        Spacer(Modifier.height(8.dp))
-                        TextField(
-                            value = tableName,
-                            onValueChange = { tableName = it },
-                            label = "课表名称"
-                        )
                         Spacer(Modifier.height(8.dp))
 
                         if (invalidCount > 0) {
@@ -252,11 +238,6 @@ class CoursePreviewScreen : BaseActivity() {
                             enabled = !importing,
                             colors = ButtonDefaults.buttonColorsPrimary(),
                             onClick = {
-                                val name = tableName.trim()
-                                if (name.isBlank()) {
-                                    message = "失败: 请输入课表名称"
-                                    return@Button
-                                }
                                 if (courses.isEmpty()) {
                                     message = "失败: 课程列表为空"
                                     return@Button
