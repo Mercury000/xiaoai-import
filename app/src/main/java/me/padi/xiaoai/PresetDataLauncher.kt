@@ -75,15 +75,19 @@ object PresetDataLauncher {
             else -> JSONArray()
         }
 
-        val forenoon = schedule?.morningNum
-            ?: pendingConfig?.optInt("forenoon")
-            ?: 0
-        val afternoon = schedule?.afternoonNum
-            ?: pendingConfig?.optInt("afternoon")
-            ?: 0
-        val night = schedule?.nightNum
-            ?: pendingConfig?.optInt("night")
-            ?: 0
+        val inferredCounts = inferSessionCounts(finalSections)
+        val forenoon = schedule?.morningNum?.takeIf { it > 0 }
+            ?: pendingConfig?.optInt("forenoon")?.takeIf { it > 0 }
+            ?: pendingConfig?.optInt("morningNum")?.takeIf { it > 0 }
+            ?: inferredCounts.first
+        val afternoon = schedule?.afternoonNum?.takeIf { it > 0 }
+            ?: pendingConfig?.optInt("afternoon")?.takeIf { it > 0 }
+            ?: pendingConfig?.optInt("afternoonNum")?.takeIf { it > 0 }
+            ?: inferredCounts.second
+        val night = schedule?.nightNum?.takeIf { it > 0 }
+            ?: pendingConfig?.optInt("night")?.takeIf { it > 0 }
+            ?: pendingConfig?.optInt("nightNum")?.takeIf { it > 0 }
+            ?: inferredCounts.third
         val totalWeek = pendingConfig?.optInt("totalWeek")
             ?.takeIf { it > 0 }
             ?: 20
@@ -104,6 +108,40 @@ object PresetDataLauncher {
             put("night", night)
             put("sections", finalSections)
         }
+    }
+
+    private fun inferSessionCounts(sections: JSONArray): Triple<Int, Int, Int> {
+        val morningSections = linkedSetOf<Int>()
+        val afternoonSections = linkedSetOf<Int>()
+        val nightSections = linkedSetOf<Int>()
+
+        for (i in 0 until sections.length()) {
+            val obj = sections.optJSONObject(i) ?: continue
+            val section = obj.optInt("section", -1)
+            if (section <= 0) continue
+            val startMinutes = parseClockMinutes(obj.optString("startTime"))
+            when {
+                startMinutes in 0 until 12 * 60 -> morningSections += section
+                startMinutes in 12 * 60 until 18 * 60 -> afternoonSections += section
+                startMinutes >= 18 * 60 -> nightSections += section
+                else -> morningSections += section
+            }
+        }
+
+        return Triple(
+            morningSections.size,
+            afternoonSections.size,
+            nightSections.size
+        )
+    }
+
+    private fun parseClockMinutes(raw: String?): Int {
+        val value = raw.orEmpty().trim()
+        val parts = value.split(":")
+        if (parts.size < 2) return -1
+        val hour = parts[0].toIntOrNull() ?: return -1
+        val minute = parts[1].toIntOrNull() ?: return -1
+        return hour * 60 + minute
     }
 
     private fun normalizeSections(source: JSONArray): JSONArray {
