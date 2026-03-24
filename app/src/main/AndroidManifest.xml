@@ -6,7 +6,7 @@
         android:name=".application.DefaultApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="课表修复"
+        android:label="课表修复-R"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppDefault"
@@ -65,7 +65,7 @@
         <activity-alias
             android:name=".Home"
             android:exported="true"
-            android:label="课表修复"
+            android:label="课表修复-R"
             android:screenOrientation="behind"
             android:targetActivity=".ui.activity.MainActivity">
 
