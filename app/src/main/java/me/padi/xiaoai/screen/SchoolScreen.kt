@@ -18,7 +18,6 @@ import com.mercury.xiaoaiimport.get
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.RawRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,9 +52,9 @@ import com.kevinnzou.web.WebContent
 import com.kevinnzou.web.WebView
 import com.kevinnzou.web.rememberWebViewNavigator
 import com.kevinnzou.web.rememberWebViewState
+import com.mercury.xiaoaiimport.launchImportActivity
 import com.mercury.xiaoaiimport.click.openContributorQQ
 import com.mercury.xiaoaiimport.hook.HookEntry
-import com.mercury.xiaoaiimport.proxyActivity
 import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.ApiClient
 import com.mercury.xiaoaiimport.HostCompat
@@ -64,8 +63,6 @@ import com.mercury.xiaoaiimport.openCoursePreviewScreen
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.ShiguangAdapterEntry
 import com.mercury.xiaoaiimport.parseShiguangSchoolIndexPb
-import org.json.JSONArray
-import org.json.JSONObject
 import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -109,10 +106,8 @@ class SchoolScreen : BaseActivity() {
     companion object {
         private const val PREF_NAME = "shiguang_cache"
         private const val CACHE_KEY_PB = "school_index_pb_base64"
-        private const val CACHE_KEY_TS   = "school_index_pb_ts"
         private const val CACHE_KEY_SOURCE = "school_index_pb_source"
         /** 缓存有效期 6 小时；强制刷新时忽略 */
-        private const val CACHE_TTL_MS   = 6 * 60 * 60 * 1000L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -129,16 +124,12 @@ class SchoolScreen : BaseActivity() {
     }
 
     /**
-     * 加载学校列表。
-     * - 始终先以本地 school.json 作兜底。
-     * - forceRefresh=false：优先读本地缓存（6h 内有效），缓存过期或不存在则拉远程。
-     * - forceRefresh=true ：直接拉远程，跳过缓存检查（用户点击"刷新"按钮）。
+     * ???????
+     * `forceRefresh=false` ???????????????????????
+     * `forceRefresh=true` ?????????????????
      */
     private fun loadSchoolList(forceRefresh: Boolean = false) {
         // 1. 本地 JSON 兜底
-        val localJson = readRawFile(R.raw.school) ?: ""
-        parseAndPopulateList(localJson)
-
         val prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val sourceKey = HostCompat.getShiguangRepoUrl(this)
 
@@ -147,13 +138,9 @@ class SchoolScreen : BaseActivity() {
             val cached = if (prefs.getString(CACHE_KEY_SOURCE, null) == sourceKey) {
                 prefs.getString(CACHE_KEY_PB, null)
             } else null
-            val ts     = prefs.getLong(CACHE_KEY_TS, 0L)
             if (!cached.isNullOrBlank()) {
                 parseAndPopulatePb(android.util.Base64.decode(cached, android.util.Base64.DEFAULT))
-                // 缓存仍新鲜 → 不发网络请求，直接返回
-                if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
-                    return
-                }
+                return
             }
         }
 
@@ -167,7 +154,6 @@ class SchoolScreen : BaseActivity() {
                     prefs.edit()
                         .putString(CACHE_KEY_PB, android.util.Base64.encodeToString(remoteBytes, android.util.Base64.NO_WRAP))
                         .putString(CACHE_KEY_SOURCE, sourceKey)
-                        .putLong(CACHE_KEY_TS, System.currentTimeMillis())
                         .apply()
                     runOnUiThread { parseAndPopulatePb(remoteBytes) }
                 }
@@ -179,66 +165,6 @@ class SchoolScreen : BaseActivity() {
         }, onError = { _ ->
             runOnUiThread { isRefreshing = false }
         })
-    }
-
-    private fun parseAndPopulateList(content: String) {
-        try {
-            val newList = mutableListOf<SchoolData>()
-            if (content.contains("schools:") || content.contains("- id:")) {
-                // 官方 YAML 规范
-                val schools = parseYamlList(content).filter { it.containsKey("id") && it.containsKey("name") }
-                for (school in schools) {
-                    val schoolName = school["name"] ?: "Unknown"
-                    val schoolId = school["id"] ?: ""
-                    // 含"通用"字样或 GLOBAL_TOOLS 置顶到 # 分组
-                    val schoolSortKey = if (schoolName.contains("通用") || schoolId == "GLOBAL_TOOLS") "#"
-                                       else school["initial"] ?: "#"
-                    newList.add(SchoolData(
-                        name = schoolName,
-                        type = "拾光适配",
-                        url = school["resource_folder"] ?: "",
-                        importType = "shiguang_official",
-                        sortKey = schoolSortKey,
-                        isPinned = (schoolSortKey == "#")
-                    ))
-                }
-            } else {
-                // 传统 JSON 规范
-                val schoolsArray = if (content.startsWith("{")) {
-                    JSONObject(content).optJSONArray("3") ?: return
-                } else {
-                    JSONArray(content)
-                }
-                for (i in 0 until schoolsArray.length()) {
-                    val school = schoolsArray.getJSONObject(i)
-                    if (school.has("2")) { // 数字键格式
-                        newList.add(SchoolData(
-                            school.optString("2", "Unknown"),
-                            "拾光适配",
-                            school.optString("1", ""),
-                            "shiguang",
-                            school.optString("3", "#")
-                        ))
-                    } else { // 标准键格式
-                        newList.add(SchoolData(
-                            school.optString("name", "Unknown"),
-                            school.optString("type", ""),
-                            school.optString("url", ""),
-                            school.optString("importType", "wakeup"),
-                            school.optString("sortKey", "#")
-                        ))
-                    }
-                }
-            }
-
-            if (newList.isNotEmpty()) {
-                schoolList.clear()
-                // 先按 sortKey 再按 name 排序，保证 "#" 置顶分组内条目也有序
-                schoolList.addAll(newList.sortedWith(compareBy({ it.sortKey }, { it.name })))
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
     private fun parseAndPopulatePb(bytes: ByteArray) {
@@ -261,82 +187,8 @@ class SchoolScreen : BaseActivity() {
             e.printStackTrace()
         }
     }
-
-    private fun readRawFile(@RawRes resId: Int): String? {
-        return try {
-            resources.openRawResource(resId).bufferedReader().use { it.readText() }
-        } catch (e: Exception) {
-            null
-        }
-    }
 }
 
-private fun parseYamlList(content: String): List<Map<String, String>> {
-    val items = mutableListOf<Map<String, String>>()
-    var currentItem = mutableMapOf<String, String>()
-    val lines = content.lines()
-    for (line in lines) {
-        val trimmed = line.trim()
-        if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-        if (trimmed.startsWith("- ")) {
-            if (currentItem.isNotEmpty()) {
-                items.add(currentItem)
-                currentItem = mutableMapOf()
-            }
-            val pair = extractYamlPair(trimmed.substring(2))
-            if (pair != null) currentItem[pair.first] = pair.second
-        } else if (trimmed.contains(":")) {
-            val pair = extractYamlPair(trimmed)
-            if (pair != null) currentItem[pair.first] = pair.second
-        }
-    }
-    if (currentItem.isNotEmpty()) items.add(currentItem)
-    return items
-}
-
-private fun extractYamlPair(line: String): Pair<String, String>? {
-    val colonIndex = line.indexOf(":")
-    if (colonIndex == -1) return null
-    val key = line.substring(0, colonIndex).trim()
-    val valuePart = line.substring(colonIndex + 1).trim()
-    // 引号内可能含 #（如 initial: "#"），必须先找闭合引号，不能直接 stripComment
-    val value: String = if (valuePart.startsWith("\"") || valuePart.startsWith("'")) {
-        val q = valuePart[0]
-        val sb = StringBuilder()
-        var i = 1
-        var escaped = false
-        while (i < valuePart.length) {
-            val ch = valuePart[i]
-            if (escaped) {
-                sb.append(
-                    when (ch) {
-                        'n' -> '\n'
-                        'r' -> '\r'
-                        't' -> '\t'
-                        '\\' -> '\\'
-                        '"' -> '"'
-                        '\'' -> '\''
-                        else -> ch
-                    }
-                )
-                escaped = false
-            } else if (ch == '\\') {
-                escaped = true
-            } else if (ch == q) {
-                break
-            } else {
-                sb.append(ch)
-            }
-            i++
-        }
-        sb.toString()
-    } else {
-        // 不带引号：截掉 # 注释
-        val hashIdx = valuePart.indexOf('#')
-        if (hashIdx >= 0) valuePart.substring(0, hashIdx).trim() else valuePart
-    }
-    return key to value
-}
 
 private fun startOfficialJsImport(context: Context, folder: String, name: String, jsPath: String, url: String, desc: String) {
     val scriptUrl = HostCompat.buildShiguangScriptRawUrl(context, "resources/$folder/$jsPath")
@@ -349,16 +201,6 @@ private fun startOfficialJsImport(context: Context, folder: String, name: String
         WaitDialog.dismiss()
         TipDialog.show("脚本下载失败: ${e.message}")
     })
-}
-
-private fun launchImportActivity(context: Context, url: String, title: String, text: String, script: String) {
-    val intent = Intent(context, WebViewScreen::class.java).apply {
-        putExtra("url", url)
-        putExtra("title", title)
-        putExtra("script", "(async function () {${script}})();")
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    context.startActivity(intent)
 }
 
 @SuppressLint("SetJavaScriptEnabled")

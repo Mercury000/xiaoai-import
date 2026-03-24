@@ -47,7 +47,6 @@ import coil3.compose.AsyncImage
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.click.openContributorQQ
 import com.mercury.xiaoaiimport.hook.HookEntry
-import com.mercury.xiaoaiimport.proxyActivity
 import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.HostCompat
 import org.json.JSONObject

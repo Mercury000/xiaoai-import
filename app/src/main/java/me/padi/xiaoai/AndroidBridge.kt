@@ -56,14 +56,9 @@ class AndroidBridge(
     private val context: Context, private val webView: WebView, private val callback: BridgeCallback
 ) {
     private val handler = Handler(Looper.getMainLooper())
-    private var importTableId: String? = null
     private var currentToast: Toast? = null
 
     // 外部设置导入课表 ID
-    fun setImportTableId(tableId: String) {
-        this.importTableId = tableId
-    }
-
     /** JS 调用：显示短暂的 Toast 消息。 */
     @JavascriptInterface
     fun showToast(message: String) {

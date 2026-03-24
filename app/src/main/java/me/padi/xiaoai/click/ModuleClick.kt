@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 import com.mercury.xiaoaiimport.Course
 import com.mercury.xiaoaiimport.openCoursePreviewScreen
 import com.mercury.xiaoaiimport.ScheduleConfig
-import com.mercury.xiaoaiimport.proxyActivity
 import com.mercury.xiaoaiimport.screen.AiScreen
 import com.mercury.xiaoaiimport.screen.JwSystemScreen
 import org.json.JSONArray
@@ -27,7 +26,6 @@ fun importCourseFormJw(context: Context) {
 
 fun openAiImportScreen(context: Context) {
     val intent = Intent(context, AiScreen::class.java)
-    intent.putExtra("proxy_target_activity", context.proxyActivity())
     context.startActivity(intent)
 }
 

@@ -40,17 +40,13 @@ class WebAppInterface(private val context: Context) {
 
     @JavascriptInterface
     fun navSchoolScreen() {
-        val intent = Intent(context, JwSystemScreen::class.java).apply {
-            putExtra("proxy_target_activity", context.proxyActivity())
-        }
+        val intent = Intent(context, JwSystemScreen::class.java)
         context.startActivity(intent)
     }
 
     @JavascriptInterface
     fun navModuleScreen() {
-        val intent = Intent(context, ModuleScreen::class.java).apply {
-            putExtra("proxy_target_activity", context.proxyActivity())
-        }
+        val intent = Intent(context, ModuleScreen::class.java)
         context.startActivity(intent)
     }
 }

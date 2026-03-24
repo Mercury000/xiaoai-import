@@ -1,7 +1,6 @@
 package com.mercury.xiaoaiimport
 
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import androidx.annotation.RawRes
 import com.mercury.xiaoaiimport.screen.WebViewScreen
@@ -16,19 +15,6 @@ fun Context.readRawFile(@RawRes resId: Int): String? {
     } catch (e: Exception) {
         null
     }
-}
-
-fun Context.proxyActivity(): String {
-    var current: Context? = this
-    repeat(8) {
-        if (current == null) return@repeat
-        val className = current.javaClass.name
-        if (className.startsWith("com.xiaomi.voiceassistant") && className.endsWith("Activity")) {
-            return className
-        }
-        current = (current as? ContextWrapper)?.baseContext
-    }
-    return "com.xiaomi.voiceassistant.web.container.AiWebActivity"
 }
 
 fun launchImportActivity(context: Context, url: String, title: String, text: String = "", script: String) {
