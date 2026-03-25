@@ -6,8 +6,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.webkit.JavascriptInterface
-import android.webkit.WebView
 import android.widget.Toast
+import com.tencent.smtt.sdk.WebView
 import kotlinx.serialization.Serializable
 import org.json.JSONArray
 import org.json.JSONObject

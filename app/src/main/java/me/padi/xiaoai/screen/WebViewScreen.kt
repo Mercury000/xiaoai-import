@@ -1,16 +1,10 @@
-package com.mercury.xiaoaiimport.screen
+﻿package com.mercury.xiaoaiimport.screen
 
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
-import android.webkit.CookieManager
-import android.webkit.SslErrorHandler
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -101,8 +95,16 @@ import com.kongzue.dialogx.interfaces.OnDialogButtonClickListener
 import com.kongzue.dialogx.interfaces.OnInputDialogButtonClickListener
 import com.kongzue.dialogx.interfaces.OnMenuButtonClickListener
 import com.kongzue.dialogx.interfaces.OnMenuItemClickListener
+import com.tencent.smtt.export.external.interfaces.ConsoleMessage
+import com.tencent.smtt.export.external.interfaces.JsResult
+import com.tencent.smtt.export.external.interfaces.SslError
+import com.tencent.smtt.export.external.interfaces.SslErrorHandler
+import com.tencent.smtt.sdk.CookieManager
+import com.tencent.smtt.sdk.WebChromeClient
+import com.tencent.smtt.sdk.WebSettings
+import com.tencent.smtt.sdk.WebView
+import com.tencent.smtt.sdk.WebViewClient
 
-/** 每次页面加载后注入的桥接胶水脚本，保证页面跳转后 AndroidBridgePromise 始终可用 */
 private val BRIDGE_GLUE_JS = """
 (function(){
   try {
@@ -123,8 +125,6 @@ private val BRIDGE_GLUE_JS = """
     };
     function mkp(fn){return new Promise(function(res,rej){var id='_bp'+Date.now()+Math.random().toString(36).slice(2);reg[id]=[res,rej];fn(id);});}
     function sarg(a){ return typeof a === 'string' ? a : JSON.stringify(a); }
-    
-    // 针对旧版适配器设计的同步桥接挂载（阻塞式）
     window.app = window.app || {};
     window.app.showAlert = function(t,c,b){ 
         console.log('Sync Bridge: showAlert called'); 
@@ -156,9 +156,7 @@ private val BRIDGE_GLUE_JS = """
     window.app.closeWebView = function(){ AndroidBridge.onTaskCompleted(); };
     window.app.close = window.app.closeWebView;
     
-    window.AndroidBridge = window.app; // 保证 window.AndroidBridge 也有相同别名
-    
-    // 同时也保留异步注入，供新版或 AI 模式使用
+    window.AndroidBridge = window.app; // 淇濊瘉 window.AndroidBridge 涔熸湁鐩稿悓鍒悕
     window.AndroidBridgePromise = {
       showAlert:function(t,c,b){ return mkp(function(id){AndroidBridge.showAlertAsync(sarg(t),sarg(c),sarg(b),id);});},
       showPrompt:function(t,p,d,v){ return mkp(function(id){AndroidBridge.showPromptAsync(sarg(t),sarg(p),sarg(d||''),sarg(v||''),id);});},
@@ -184,13 +182,9 @@ private fun normalizeShiguangCourseConfig(configJson: String): String {
         val raw = JSONObject(configJson)
         val src = raw.optJSONObject("courseConfig") ?: raw
         val mapped = JSONObject(src.toString())
-
-        // 直接透传可能已经是小爱字段的数据
         if (src.has("startSemester")) mapped.put("startSemester", src.get("startSemester"))
         if (src.has("totalWeek")) mapped.put("totalWeek", src.get("totalWeek"))
         if (src.has("weekStart")) mapped.put("weekStart", src.get("weekStart"))
-
-        // 拾光规范字段 -> 小爱字段
         if (src.has("semesterStartDate")) mapped.put("startSemester", src.get("semesterStartDate"))
         if (src.has("semesterTotalWeeks")) mapped.put("totalWeek", src.get("semesterTotalWeeks"))
         if (src.has("firstDayOfWeek")) mapped.put("weekStart", src.get("firstDayOfWeek"))
@@ -329,15 +323,15 @@ class WebViewScreen : BaseActivity() {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun WebViewScreenContent(intent: Intent) {
-    // 获取 Intent 参数
     val intentUrl = intent.getStringExtra("url") ?: ""
-    val intentTitle = intent.getStringExtra("title") ?: "导入课程表"
+    val intentTitle = intent.getStringExtra("title") ?: "导入课表"
     val intentScript = intent.getStringExtra("script") ?: ""
     val intentText = intent.getStringExtra("text") ?: ""
     val context = LocalContext.current
 
     var webViewLoading by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var bridgeBoundWebView by remember { mutableStateOf<WebView?>(null) }
     var url by remember { mutableStateOf(intentUrl.ifBlank { HookEntry.prefs.getString("jw_webview_url", "") }) }
     var lastLoadedUrl by remember { mutableStateOf(url) }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
@@ -347,22 +341,18 @@ private fun WebViewScreenContent(intent: Intent) {
     val coroutineScope = rememberCoroutineScope()
     
     var canGoBack by remember { mutableStateOf(false) }
-    
-    // BackHandler 处理
     BackHandler(enabled = canGoBack) {
         webViewRef?.goBack()
     }
-
-    // 对话框状态（用显式 MutableState ref 以便在 remember 闭包中捕获）
     val alertStateRef: MutableState<AlertPendingState?> = remember { mutableStateOf(null) }
     val promptStateRef: MutableState<PromptPendingState?> = remember { mutableStateOf(null) }
     val selectionStateRef: MutableState<SelectionPendingState?> = remember { mutableStateOf(null) }
     val promptInputRef: MutableState<String> = remember { mutableStateOf("") }
 
-    /** 抽取出来的 AI 源码解析逻辑，避免与 Bridge 交互逻辑混杂 */
+    /** Extract HTML and parse via AI mode. */
     fun processHtmlForAi(html: String) {
         aiParsingInProgress = true
-        Log.d("WebViewScreen", "开始 processHtmlForAi, html 长度: ${html.length}")
+        Log.d("WebViewScreen", "processHtmlForAi started, html length: ${html.length}")
         coroutineScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -619,7 +609,6 @@ private fun WebViewScreenContent(intent: Intent) {
                 .navigationBarsPadding()
                 .imePadding()
         ) {
-            // URL Area
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -649,8 +638,7 @@ private fun WebViewScreenContent(intent: Intent) {
             ) {
                 AndroidView(
                     factory = { ctx ->
-                        WebView(ctx).apply {
-                            this.webViewClient = object : android.webkit.WebViewClient() {
+                        WebView(ctx).apply {                            this.webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                                     super.onPageStarted(view, url, favicon)
                                     webViewLoading = true
@@ -669,56 +657,48 @@ private fun WebViewScreenContent(intent: Intent) {
                                     canGoBack = view.canGoBack()
                                     Log.d("WebViewScreen", "onPageFinished: $url")
                                     CookieManager.getInstance().flush()
-                                    view.evaluateJavascript(BRIDGE_GLUE_JS, null)
                                 }
 
-                                override fun onReceivedError(view: WebView, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
-                                    super.onReceivedError(view, request, error)
-                                    Log.e("WebViewScreen", "WebView Error: ${error?.description}")
+                                override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                                    super.onReceivedError(view, errorCode, description, failingUrl)
+                                    Log.e("WebViewScreen", "WebView Error: code=$errorCode, description=$description, url=$failingUrl")
                                 }
 
-                                override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
-                                    Log.e("WebViewScreen", "Render process gone! Reason: ${detail.rendererPriorityAtExit()}")
-                                    importState = ImportState.Error("渲染进程崩溃，正在恢复...")
-                                    view.reload()
-                                    return true
-                                }
-                                
-                                override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
-                                    handler.proceed()
+                                override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                                    handler?.proceed()
                                 }
 
-                                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                                    val url = request.url.toString()
-                                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                    val safeUrl = url ?: return false
+                                    if (safeUrl.startsWith("http://") || safeUrl.startsWith("https://")) {
                                         return false
                                     }
-                                    try {
-                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url)
-                                        view.context.startActivity(intent)
-                                        return true
+                                    return try {
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(safeUrl))
+                                        view?.context?.startActivity(intent)
+                                        true
                                     } catch (e: Exception) {
-                                        Log.e("WebViewScreen", "Failed to launch intent for URL: $url", e)
-                                        return true // Return true to consume the click even if it fails
+                                        Log.e("WebViewScreen", "Failed to launch intent for URL: $safeUrl", e)
+                                        true
                                     }
                                 }
                             }
 
-                            this.webChromeClient = object : android.webkit.WebChromeClient() {
-                                override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                            this.webChromeClient = object : WebChromeClient() {
+                                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                                     consoleMessage?.let {
                                         Log.d("WebViewConsole", "[${it.messageLevel()}] ${it.message()}")
                                     }
                                     return true
                                 }
-                                override fun onJsAlert(view: WebView, url: String, message: String, result: android.webkit.JsResult): Boolean {
+                                override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean {
                                     val latch = CountDownLatch(1)
                                     val res = BooleanArray(1) { false }
                                     bridgeCallback.onShowAlert(AlertDialogData("来自网页的消息", message, "确定"), latch, res)
                                     Thread { latch.await(); view.post { result.confirm() } }.start()
                                     return true
                                 }
-                                override fun onJsConfirm(view: WebView, url: String, message: String, result: android.webkit.JsResult): Boolean {
+                                override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean {
                                     val latch = CountDownLatch(1)
                                     val res = BooleanArray(1) { false }
                                     bridgeCallback.onShowAlert(AlertDialogData("请确认", message, "确定"), latch, res)
@@ -727,9 +707,6 @@ private fun WebViewScreenContent(intent: Intent) {
                                 }
                                 
                                 override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
-                                    // 许多闪退是因为在同一 WebView 中处理多窗口时状态冲突
-                                    // 给 transport 设置一个已经存在的 WebView 并直接返回 true 可能导致某些设备闪退
-                                    // 如果只是想在当前窗口打开，推荐返回 false 让父类或默认逻辑处理，或者手动 loadUrl
                                     val url = view.hitTestResult.extra
                                     if (url != null) {
                                         view.loadUrl(url)
@@ -743,11 +720,8 @@ private fun WebViewScreenContent(intent: Intent) {
                                 javaScriptEnabled = true
                                 useWideViewPort = true
                                 loadWithOverviewMode = true
-                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 XiaoAi/1.0"
+                                mixedContentMode = 0
                                 textZoom = 100
-
-                                // 增强加载与兼容性设置
                                 allowFileAccess = true
                                 allowContentAccess = true
                                 domStorageEnabled = true
@@ -766,17 +740,12 @@ private fun WebViewScreenContent(intent: Intent) {
                                 setAcceptThirdPartyCookies(webView, true)
                             }
 
-                            val bridge = AndroidBridge(context, this, bridgeCallback)
-                            addJavascriptInterface(bridge, "AndroidBridge")
-                            addJavascriptInterface(bridge, "app")
-                            
                             webViewRef = this
                             loadUrl(url)
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
                     update = {
-                        // 如果有特殊更新逻辑可以放在这里，目前 loadUrl 已在 factory 处理
                     }
                 )
 
@@ -785,8 +754,6 @@ private fun WebViewScreenContent(intent: Intent) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
                 }
             }
-
-            // Bottom Control Panel
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -828,10 +795,10 @@ private fun WebViewScreenContent(intent: Intent) {
                             }
                         }
                         is ImportState.Success -> {
-                            Text("✅ ${state.message}", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                            Text("✓ ${state.message}", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
                         }
                         is ImportState.Error -> {
-                            Text("❌ ${state.message}", color = MiuixTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                            Text("✕ ${state.message}", color = MiuixTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
                         }
                         ImportState.Idle -> {}
                     }
@@ -843,23 +810,30 @@ private fun WebViewScreenContent(intent: Intent) {
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !webViewLoading && importState !is ImportState.Loading && importState !is ImportState.Parsing,
                         onClick = {
+                            val currentWebView = webViewRef ?: run {
+                                importState = ImportState.Error("WebView 未准备好，请稍后重试")
+                                return@Button
+                            }
+                            if (bridgeBoundWebView !== currentWebView) {
+                                val bridge = AndroidBridge(context, currentWebView, bridgeCallback)
+                                currentWebView.addJavascriptInterface(bridge, "AndroidBridge")
+                                bridgeBoundWebView = currentWebView
+                                Log.d("WebViewScreen", "AndroidBridge injected on parse")
+                            }
                             HostCompat.pendingCourseConfigJson = null
                             HostCompat.pendingTimeSlotSectionsJson = null
                             importState = ImportState.Loading("脚本启动中...")
-                            Log.d("WebViewScreen", "开始点击解析, webViewRef is ${if(webViewRef == null) "NULL" else "NOT NULL"}")
-                            
-                            // 启动冗余超时保护：如果脚本执行挂起（例如 V8 死循环），10秒后强制复位
+                            Log.d("WebViewScreen", "寮€濮嬬偣鍑昏В鏋? webViewRef is ${if(webViewRef == null) "NULL" else "NOT NULL"}")
                             coroutineScope.launch {
                                 kotlinx.coroutines.delay(10000)
                                 if (importState is ImportState.Loading) {
-                                    Log.w("WebViewScreen", "冗余超时保护触发（10s），强制重置到 Idle")
+                                    Log.w("WebViewScreen", "Redundant timeout guard triggered (10s), reset to Idle")
                                     importState = ImportState.Idle
                                 }
                             }
                             if (intentScript.isNotBlank()) {
-                                Log.d("WebViewScreen", "注入并运行脚本, 长度: ${intentScript.length}")
-                                webViewRef?.evaluateJavascript(BRIDGE_GLUE_JS) {
-                                    // 为脚本添加 try-catch 包装以防挂起
+                                Log.d("WebViewScreen", "Inject and execute script, length: ${intentScript.length}")
+                                currentWebView.evaluateJavascript(BRIDGE_GLUE_JS) {
                                     val wrappedScript = """
                                         (function(){
                                             console.log('WrappedScript: Started');
@@ -875,13 +849,12 @@ private fun WebViewScreenContent(intent: Intent) {
                                             }
                                         })();
                                     """.trimIndent()
-                                    webViewRef?.evaluateJavascript(wrappedScript) { res ->
-                                        Log.d("WebViewScreen", "脚本 evaluateJavascript 完成, 返回值: $res")
-                                        // 启动 10 秒超时检测：如果脚本执行完了但 10 秒后还没进入 Parsing 或 Success 状态，重置为 Idle
+                                    currentWebView.evaluateJavascript(wrappedScript) { res ->
+                                        Log.d("WebViewScreen", "Script evaluateJavascript finished, result: $res")
                                         coroutineScope.launch {
                                             kotlinx.coroutines.delay(10000)
                                             if (importState is ImportState.Loading) {
-                                                Log.w("WebViewScreen", "脚本执行超时（10s），状态仍为 Loading，强制重置到 Idle")
+                                                Log.w("WebViewScreen", "Script timeout (10s), still Loading, force reset to Idle")
                                                 importState = ImportState.Idle
                                             }
                                         }
@@ -946,7 +919,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                             if (frameChunks.length > 0) {
                                                 html += '\\n<!-- XIAOAI_IFRAME_CONTENT_BEGIN -->\\n' + frameChunks.join('\\n') + '\\n<!-- XIAOAI_IFRAME_CONTENT_END -->';
                                             }
-                                            if (html.length > 2000000) { // > 2MB 则降级
+                                            if (html.length > 2000000) { // > 2MB 鍒欓檷绾?
                                                 var mainText = (document.body && document.body.innerText) ? document.body.innerText : '';
                                                 var textPayload = '[XIAOAI_TEXT_FALLBACK]\\n[MAIN_TEXT]\\n' + mainText;
                                                 if (frameTexts.length > 0) {
@@ -968,8 +941,8 @@ private fun WebViewScreenContent(intent: Intent) {
                                         }
                                     })()
                                 """.trimIndent()
-                                webViewRef?.evaluateJavascript(extractionScript) { res ->
-                                    Log.d("WebViewScreen", "AI 提取脚本注入结果: $res")
+                                currentWebView.evaluateJavascript(extractionScript) { res ->
+                                    Log.d("WebViewScreen", "AI extraction script injected, result: $res")
                                 }
                             }
                         }
@@ -980,10 +953,6 @@ private fun WebViewScreenContent(intent: Intent) {
             }
         }
     }
-
-    // ---- 对话框 UI（由拾光仓库适配器脚本通过 AndroidBridgePromise 触发）----
-
-    // Alert 弹窗
     val alert = alertStateRef.value
     if (alert != null) {
         Dialog(onDismissRequest = {}) {
@@ -1119,3 +1088,6 @@ private fun WebViewScreenContent(intent: Intent) {
         }
     }
 }
+
+
+

@@ -275,7 +275,9 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
 
-    implementation("com.github.suzhelan:XpHelper:3.0")
+    implementation("com.github.suzhelan:XpHelper:3.0") {
+        exclude(group = "org.luckypray", module = "dexkit")
+    }
 
     implementation("top.yukonga.miuix.kmp:miuix-android:0.8.0")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.8.0")
@@ -285,6 +287,7 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-navigation3-adaptive:0.8.0")
 
     implementation("io.github.kevinnzou:compose-webview:0.33.6")
+    implementation("com.tencent.tbs:tbssdk:44286")
 
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
 
