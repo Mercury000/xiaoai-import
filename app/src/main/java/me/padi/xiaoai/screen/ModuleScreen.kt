@@ -3,6 +3,7 @@ package com.mercury.xiaoaiimport.screen
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -67,6 +68,37 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 class ModuleScreen : BaseActivity() {
+    private data class ProjectRef(
+        val name: String,
+        val author: String,
+        val license: String,
+        val url: String
+    )
+
+    private val projectRefs = listOf(
+        ProjectRef("shiguang_warehouse", "XingHeYuZhuan", "MIT", "https://github.com/XingHeYuZhuan/shiguang_warehouse"),
+        ProjectRef("ai-schedule-import-app", "litedream", "MIT", "https://gitee.com/litedream/ai-schedule-import-app"),
+        ProjectRef("YuKiHookAPI", "HighCapable", "Apache-2.0", "https://github.com/HighCapable/YuKiHookAPI"),
+        ProjectRef("KavaRef", "HighCapable", "Apache-2.0", "https://github.com/HighCapable/KavaRef"),
+        ProjectRef("Hikage", "BetterAndroid", "Apache-2.0", "https://github.com/BetterAndroid/Hikage"),
+        ProjectRef("BetterAndroid", "BetterAndroid", "Apache-2.0", "https://github.com/BetterAndroid/BetterAndroid"),
+        ProjectRef("DrawableToolbox", "duanhong169", "Apache-2.0", "https://github.com/duanhong169/DrawableToolbox"),
+        ProjectRef("compose-webview", "KevinnZou", "Apache-2.0", "https://github.com/KevinnZou/compose-webview"),
+        ProjectRef("DialogX", "kongzue", "Apache-2.0", "https://github.com/kongzue/DialogX"),
+        ProjectRef("OkHttp", "square", "Apache-2.0", "https://github.com/square/okhttp"),
+        ProjectRef("Coil", "coil-kt", "Apache-2.0", "https://github.com/coil-kt/coil"),
+        ProjectRef("kotlinx.serialization", "Kotlin", "Apache-2.0", "https://github.com/Kotlin/kotlinx.serialization"),
+        ProjectRef("miuix", "yukonga", "Apache-2.0", "https://github.com/yukonga/miuix"),
+        ProjectRef("Material Components", "material-components", "Apache-2.0", "https://github.com/material-components/material-components-android"),
+        ProjectRef("XpHelper", "suzhelan", "No License", "https://github.com/suzhelan/XPHelper")
+    )
+
+    private fun openProjectUrl(url: String) {
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
@@ -77,6 +109,7 @@ class ModuleScreen : BaseActivity() {
             MiuixTheme {
                 var showBottomSheet = remember { mutableStateOf(false) }
                 var showShiguangSourceSheet = remember { mutableStateOf(false) }
+                var showReferencesSheet = remember { mutableStateOf(false) }
 
                 var url by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_url", "")) }
                 var javaScriptStr by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_script", "")) }
@@ -88,10 +121,11 @@ class ModuleScreen : BaseActivity() {
                     mutableStateOf(HostCompat.getShiguangScriptBranch(context))
                 }
 
-                BackHandler(enabled = showBottomSheet.value || showShiguangSourceSheet.value) {
+                BackHandler(enabled = showBottomSheet.value || showShiguangSourceSheet.value || showReferencesSheet.value) {
                     when {
                         showBottomSheet.value -> showBottomSheet.value = false
                         showShiguangSourceSheet.value -> showShiguangSourceSheet.value = false
+                        showReferencesSheet.value -> showReferencesSheet.value = false
                     }
                 }
 
@@ -259,6 +293,26 @@ class ModuleScreen : BaseActivity() {
                                     openContributorQQ(context, "1587005702")
                                 })
                             }
+                            Spacer(Modifier.height(10.dp))
+                            SmallTitle(
+                                text = "引用", insideMargin = PaddingValues(16.dp, 4.dp)
+                            )
+
+                            Card {
+                                BasicComponent(
+                                    title = "开源项目引用",
+                                    summary = "本项目使用或参考的开源项目",
+                                    startAction = {
+                                        Icon(
+                                            modifier = Modifier.padding(end = 16.dp),
+                                            painter = painterResource(R.mipmap.ic_github),
+                                            contentDescription = null,
+                                            tint = MiuixTheme.colorScheme.onBackground
+                                        )
+                                    },
+                                    onClick = { showReferencesSheet.value = true }
+                                )
+                            }
                         }
                     }
                 }
@@ -360,6 +414,56 @@ class ModuleScreen : BaseActivity() {
                                 },
                                 colors = ButtonDefaults.buttonColorsPrimary()
                             ) { Text("保存", color = MiuixTheme.colorScheme.onPrimary) }
+                        }
+                        Spacer(Modifier.height(20.dp))
+                    }
+                }
+
+                if (showReferencesSheet.value) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=0.4f)).clickable{ showReferencesSheet.value=false })
+                }
+                AnimatedVisibility(
+                    visible = showReferencesSheet.value,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = slideInVertically { it },
+                    exit = slideOutVertically { it }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MiuixTheme.colorScheme.surface, RoundedCornerShape(topStart=16.dp, topEnd=16.dp))
+                            .navigationBarsPadding()
+                            .imePadding()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(top = 12.dp, bottom = 4.dp)
+                                .size(width = 40.dp, height = 4.dp)
+                                .background(
+                                    MiuixTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                        Text("引用", fontSize=18.sp, modifier=Modifier.padding(vertical=16.dp))
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 420.dp)
+                        ) {
+                            item {
+                                projectRefs.forEach { item ->
+                                    Card {
+                                        BasicComponent(
+                                            title = item.name,
+                                            summary = "${item.author} | ${item.license}",
+                                            onClick = { openProjectUrl(item.url) }
+                                        )
+                                    }
+                                    Spacer(Modifier.height(10.dp))
+                                }
+                            }
                         }
                         Spacer(Modifier.height(20.dp))
                     }

@@ -3,7 +3,6 @@
 package com.mercury.xiaoaiimport.ui.activity
 
 import android.content.ComponentName
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.os.Bundle
@@ -285,19 +284,6 @@ class MainActivity : AppViewsActivity() {
                         Layout(createPromotionItem(R.string.about_module, R.mipmap.ic_yukihookapi))
                         Space(lparams = LayoutParams(height = 10.dp))
                         Layout(createPromotionItem(R.string.about_module_extension, R.mipmap.ic_kavaref))
-                        Space(lparams = LayoutParams(height = 10.dp))
-                        Layout(createPromotionItem(R.string.about_shiguang_warehouse, R.mipmap.ic_github))
-                        Space(lparams = LayoutParams(height = 10.dp))
-                        Layout(createPromotionItem(R.string.about_ai_schedule_import_app, R.mipmap.ic_github))
-                        Space(lparams = LayoutParams(height = 10.dp))
-                        Layout(
-                            createPromotionItem(
-                                R.string.about_open_source_notices,
-                                R.mipmap.ic_github
-                            ) {
-                                startActivity(Intent(this@MainActivity, OpenSourceNoticesActivity::class.java))
-                            }
-                        )
                     }
                 }
             }
