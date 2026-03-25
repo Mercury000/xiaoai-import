@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 允许所有域名的 HTTP 明文传输（学校教务系统大量使用 HTTP） -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- 信任用户安装的证书，兼容自签名证书的学校系统 -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
