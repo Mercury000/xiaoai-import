@@ -186,24 +186,17 @@ private val DESKTOP_SPOOF_JS = """
       } catch (_) {}
     };
     override(navigator, 'platform', 'Win32');
-    override(navigator, 'maxTouchPoints', 0);
-    override(screen, 'width', 1920);
-    override(screen, 'height', 1080);
-    override(screen, 'availWidth', 1920);
-    override(screen, 'availHeight', 1040);
-    override(window, 'innerWidth', 1280);
-    override(window, 'innerHeight', 800);
-    override(window, 'outerWidth', 1280);
-    override(window, 'outerHeight', 840);
+    // Keep touch capability so pinch-zoom still works in desktop mode.
+    override(navigator, 'maxTouchPoints', Math.max(navigator.maxTouchPoints || 0, 5));
     var metas = document.querySelectorAll('meta[name="viewport"]');
-    metas.forEach(function(m){ m.setAttribute('content', 'width=1280, initial-scale=1.0'); });
+    var viewportContent = 'width=1280, initial-scale=1.0, minimum-scale=0.25, maximum-scale=5.0, user-scalable=yes';
+    metas.forEach(function(m){ m.setAttribute('content', viewportContent); });
     if (!metas.length) {
       var m = document.createElement('meta');
       m.name = 'viewport';
-      m.content = 'width=1280, initial-scale=1.0';
+      m.content = viewportContent;
       document.head && document.head.appendChild(m);
     }
-    document.documentElement.style.minWidth = '1280px';
   } catch (e) {
     console.warn('desktop spoof failed', e);
   }
@@ -643,7 +636,6 @@ private fun WebViewScreenContent(intent: Intent) {
                 .fillMaxSize()
                 .padding(paddingValues)
                 .navigationBarsPadding()
-                .imePadding()
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
