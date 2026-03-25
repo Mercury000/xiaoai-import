@@ -15,8 +15,9 @@ object WebViewHook : YukiBaseHooker() {
     private fun shouldInject(url: String): Boolean {
         if (url.isBlank()) return false
         val u = url.lowercase()
-        // 更精准：仅命中课表设置页
-        return u.contains("ai-schedule") && u.contains("/setting")
+        // 精准且兼容新旧课表页面路径
+        val isSchedulePage = u.contains("ai-schedule") || u.contains("ai-class-schedule")
+        return isSchedulePage && u.contains("/setting")
     }
 
     private fun readRawText(context: Context, @RawRes resId: Int): String {
