@@ -153,7 +153,7 @@ private val BRIDGE_GLUE_JS = """
     window.app.notifyTaskCompleted = function(){ AndroidBridge.notifyTaskCompletion(); };
     window.app.notifyTaskCompletion = function(){ AndroidBridge.notifyTaskCompletion(); };
     window.app.postHtml = function(h){ AndroidBridge.postHtml(sarg(h)); };
-    window.app.closeWebView = function(){ AndroidBridge.onTaskCompleted(); };
+    window.app.closeWebView = function(){ AndroidBridge.closeWebView(); };
     window.app.close = window.app.closeWebView;
     
     window.AndroidBridge = window.app; // 淇濊瘉 window.AndroidBridge 涔熸湁鐩稿悓鍒悕
@@ -368,7 +368,6 @@ private fun WebViewScreenContent(intent: Intent) {
 
     var webViewLoading by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var bridgeBoundWebView by remember { mutableStateOf<WebView?>(null) }
     var url by remember { mutableStateOf(intentUrl.ifBlank { HookEntry.prefs.getString("jw_webview_url", "") }) }
     var lastLoadedUrl by remember { mutableStateOf(url) }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
@@ -695,6 +694,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                     Log.d("WebViewScreen", "onPageFinished: $url")
                                     CookieManager.getInstance().flush()
                                     view.evaluateJavascript(DESKTOP_SPOOF_JS, null)
+                                    view.evaluateJavascript(BRIDGE_GLUE_JS, null)
                                 }
 
                                 override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
@@ -779,6 +779,10 @@ private fun WebViewScreenContent(intent: Intent) {
                                 setAcceptThirdPartyCookies(webView, true)
                             }
 
+                            val bridge = AndroidBridge(context, this, bridgeCallback)
+                            addJavascriptInterface(bridge, "AndroidBridge")
+                            addJavascriptInterface(bridge, "app")
+
                             webViewRef = this
                             loadUrl(url)
                         }
@@ -853,12 +857,6 @@ private fun WebViewScreenContent(intent: Intent) {
                                 importState = ImportState.Error("WebView 未准备好，请稍后重试")
                                 return@Button
                             }
-                            if (bridgeBoundWebView !== currentWebView) {
-                                val bridge = AndroidBridge(context, currentWebView, bridgeCallback)
-                                currentWebView.addJavascriptInterface(bridge, "AndroidBridge")
-                                bridgeBoundWebView = currentWebView
-                                Log.d("WebViewScreen", "AndroidBridge injected on parse")
-                            }
                             HostCompat.pendingCourseConfigJson = null
                             HostCompat.pendingTimeSlotSectionsJson = null
                             importState = ImportState.Loading("脚本启动中...")
@@ -883,7 +881,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                             } catch(e) {
                                                 console.error('WrappedScript: Execution Error:', e);
                                                 if (window.app && window.app.reportError) window.app.reportError(e.message || e.toString());
-                                                AndroidBridge.notifyTaskCompleted();
+                                                AndroidBridge.notifyTaskCompletion();
                                                 return "Error";
                                             }
                                         })();
