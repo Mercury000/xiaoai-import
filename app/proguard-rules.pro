@@ -40,3 +40,8 @@
 
 # Fix Missing class java.lang.reflect.AnnotatedType
 -dontwarn java.lang.reflect.AnnotatedType
+
+# X5 (Tencent TBS)
+-dontwarn dalvik.system.VMStack
+-keep class com.tencent.smtt.** { *; }
+-keep class com.tencent.tbs.** { *; }
