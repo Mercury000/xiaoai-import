@@ -1,4 +1,4 @@
-package com.mercury.xiaoaiimport.hook
+﻿package com.mercury.xiaoaiimport.hook
 
 import android.content.Context
 import android.webkit.WebView
@@ -12,13 +12,20 @@ import top.sacz.xphelper.XpHelper
 object WebViewHook : YukiBaseHooker() {
     private var cachedToolsJs: String? = null
 
+    private fun shouldInject(url: String): Boolean {
+        if (url.isBlank()) return false
+        val u = url.lowercase()
+        // 更精准：仅命中课表设置页
+        return u.contains("ai-schedule") && u.contains("/setting")
+    }
+
     private fun readRawText(context: Context, @RawRes resId: Int): String {
         return context.resources.openRawResource(resId).bufferedReader().use { it.readText() }
     }
 
-    private fun injectJs(view: Any, url: String) {
+    private fun injectJs(view: Any, url: String, source: String) {
         val webView = view as WebView
-        if (!url.contains("ai-schedule")) return
+        if (!shouldInject(url)) return
         if (cachedToolsJs == null) {
             cachedToolsJs = readRawText(webView.context, R.raw.tools)
         }
@@ -48,20 +55,12 @@ object WebViewHook : YukiBaseHooker() {
 
                 val webViewClientClass = loader.loadClass("android.webkit.WebViewClient")
                 webViewClientClass.resolve().firstMethod {
-                    name = "onPageFinished"
-                    parameters(WebView::class.java, String::class.java)
-                }.hook {
-                    after {
-                        injectJs(args[0]!!, args[1] as String)
-                    }
-                }
-
-                webViewClientClass.resolve().firstMethod {
                     name = "doUpdateVisitedHistory"
                     parameters(WebView::class.java, String::class.java, java.lang.Boolean.TYPE)
                 }.hook {
                     after {
-                        injectJs(args[0]!!, args[1] as String)
+                        val url = args[1] as String
+                        injectJs(args[0]!!, url, "doUpdateVisitedHistory")
                     }
                 }
             }
