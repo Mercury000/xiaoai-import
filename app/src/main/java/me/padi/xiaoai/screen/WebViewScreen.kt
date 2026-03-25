@@ -362,6 +362,7 @@ private fun WebViewScreenContent(intent: Intent) {
     var webViewLoading by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var url by remember { mutableStateOf(intentUrl.ifBlank { HookEntry.prefs.getString("jw_webview_url", "") }) }
+    var desktopMode by remember { mutableStateOf(HookEntry.prefs.getBoolean("jw_webview_desktop_mode", false)) }
     var lastLoadedUrl by remember { mutableStateOf(url) }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
     val currentImportState by rememberUpdatedState(importState)
@@ -621,12 +622,18 @@ private fun WebViewScreenContent(intent: Intent) {
             SmallTopAppBar(
                 title = intentTitle,
                 actions = {
-                    IconButton(onClick = {
-                        webViewRef?.reload()
-                        importState = ImportState.Idle
-                    }) {
-                        Icon(imageVector = MiuixIcons.Refresh, contentDescription = "刷新")
-                    }
+                    TextButton(
+                        text = if (desktopMode) "手机版" else "桌面版",
+                        onClick = {
+                            desktopMode = !desktopMode
+                            context.writablePrefs().edit()
+                                .putBoolean("jw_webview_desktop_mode", desktopMode)
+                                .apply()
+                            webViewRef?.settings?.userAgentString =
+                                if (desktopMode) DESKTOP_USER_AGENT else WebSettings.getDefaultUserAgent(context)
+                            webViewRef?.reload()
+                        }
+                    )
                 }
             )
         }
@@ -650,6 +657,8 @@ private fun WebViewScreenContent(intent: Intent) {
                         }
                     },
                     label = "教务链接",
+                    singleLine = true,
+                    maxLines = 1,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = {
@@ -667,25 +676,29 @@ private fun WebViewScreenContent(intent: Intent) {
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {                            this.webViewClient = object : WebViewClient() {
-                                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
-                                    super.onPageStarted(view, url, favicon)
+                                override fun onPageStarted(view: WebView, urlValue: String, favicon: android.graphics.Bitmap?) {
+                                    super.onPageStarted(view, urlValue, favicon)
                                     webViewLoading = true
                                     canGoBack = view.canGoBack()
-                                    lastLoadedUrl = url
-                                    Log.d("WebViewScreen", "onPageStarted: $url")
-                                    val isTransientUrl = url == "about:blank"
+                                    lastLoadedUrl = urlValue
+                                    url = urlValue
+                                    Log.d("WebViewScreen", "onPageStarted: $urlValue")
+                                    val isTransientUrl = urlValue == "about:blank"
                                     if (!aiParsingInProgress && currentImportState is ImportState.Loading && !isTransientUrl) {
                                         importState = ImportState.Idle
                                     }
                                 }
 
-                                override fun onPageFinished(view: WebView, url: String) {
-                                    super.onPageFinished(view, url)
+                                override fun onPageFinished(view: WebView, urlValue: String) {
+                                    super.onPageFinished(view, urlValue)
                                     webViewLoading = false
                                     canGoBack = view.canGoBack()
-                                    Log.d("WebViewScreen", "onPageFinished: $url")
+                                    url = urlValue
+                                    Log.d("WebViewScreen", "onPageFinished: $urlValue")
                                     CookieManager.getInstance().flush()
-                                    view.evaluateJavascript(DESKTOP_SPOOF_JS, null)
+                                    if (desktopMode) {
+                                        view.evaluateJavascript(DESKTOP_SPOOF_JS, null)
+                                    }
                                     view.evaluateJavascript(BRIDGE_GLUE_JS, null)
                                 }
 
@@ -748,7 +761,7 @@ private fun WebViewScreenContent(intent: Intent) {
 
                             settings.apply {
                                 javaScriptEnabled = true
-                                userAgentString = DESKTOP_USER_AGENT
+                                userAgentString = if (desktopMode) DESKTOP_USER_AGENT else WebSettings.getDefaultUserAgent(context)
                                 useWideViewPort = true
                                 loadWithOverviewMode = true
                                 mixedContentMode = 0
