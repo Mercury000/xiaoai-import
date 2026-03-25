@@ -173,6 +173,43 @@ private val BRIDGE_GLUE_JS = """
 })();
 """.trimIndent()
 
+private const val DESKTOP_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+private val DESKTOP_SPOOF_JS = """
+(function() {
+  try {
+    var override = function(target, key, value) {
+      try {
+        Object.defineProperty(target, key, { get: function(){ return value; }, configurable: true });
+      } catch (_) {}
+    };
+    override(navigator, 'platform', 'Win32');
+    override(navigator, 'maxTouchPoints', 0);
+    override(screen, 'width', 1920);
+    override(screen, 'height', 1080);
+    override(screen, 'availWidth', 1920);
+    override(screen, 'availHeight', 1040);
+    override(window, 'innerWidth', 1280);
+    override(window, 'innerHeight', 800);
+    override(window, 'outerWidth', 1280);
+    override(window, 'outerHeight', 840);
+    var metas = document.querySelectorAll('meta[name="viewport"]');
+    metas.forEach(function(m){ m.setAttribute('content', 'width=1280, initial-scale=1.0'); });
+    if (!metas.length) {
+      var m = document.createElement('meta');
+      m.name = 'viewport';
+      m.content = 'width=1280, initial-scale=1.0';
+      document.head && document.head.appendChild(m);
+    }
+    document.documentElement.style.minWidth = '1280px';
+  } catch (e) {
+    console.warn('desktop spoof failed', e);
+  }
+})();
+""".trimIndent()
+
 private data class AlertPendingState(val data: AlertDialogData, val latch: CountDownLatch, val result: BooleanArray)
 private data class PromptPendingState(val data: PromptDialogData, val latch: CountDownLatch, val result: Array<String?>)
 private data class SelectionPendingState(val data: SingleSelectionDialogData, val latch: CountDownLatch, val result: IntArray)
@@ -657,6 +694,7 @@ private fun WebViewScreenContent(intent: Intent) {
                                     canGoBack = view.canGoBack()
                                     Log.d("WebViewScreen", "onPageFinished: $url")
                                     CookieManager.getInstance().flush()
+                                    view.evaluateJavascript(DESKTOP_SPOOF_JS, null)
                                 }
 
                                 override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
@@ -718,6 +756,7 @@ private fun WebViewScreenContent(intent: Intent) {
 
                             settings.apply {
                                 javaScriptEnabled = true
+                                userAgentString = DESKTOP_USER_AGENT
                                 useWideViewPort = true
                                 loadWithOverviewMode = true
                                 mixedContentMode = 0
