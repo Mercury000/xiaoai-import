@@ -349,6 +349,10 @@ private fun Course.copyCourse(): Course {
         c.day = day
         c.sections = sections
         c.weeks = weeks
+        c.isCustomTime = isCustomTime
+        c.customStartTime = customStartTime
+        c.customEndTime = customEndTime
+        c.hasExplicitSectionRange = hasExplicitSectionRange
         c.sanitizeAndValidate()
     }
 }

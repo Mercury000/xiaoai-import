@@ -36,6 +36,10 @@ fun Intent.readPreviewCourses(): List<Course> {
                         day = obj.optInt("day", 1)
                         sections = obj.optString("sections")
                         weeks = obj.optString("weeks")
+                        isCustomTime = obj.optBoolean("isCustomTime", false)
+                        customStartTime = obj.optString("customStartTime")
+                        customEndTime = obj.optString("customEndTime")
+                        hasExplicitSectionRange = obj.optBoolean("hasExplicitSectionRange", false)
                         sanitizeAndValidate()
                     }
                 )
@@ -69,6 +73,10 @@ private fun coursesToJson(courses: List<Course>): JSONArray {
                 .put("day", c.day)
                 .put("sections", c.sections)
                 .put("weeks", c.weeks)
+                .put("isCustomTime", c.isCustomTime)
+                .put("customStartTime", c.customStartTime)
+                .put("customEndTime", c.customEndTime)
+                .put("hasExplicitSectionRange", c.hasExplicitSectionRange)
         )
     }
     return arr

@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.net.toUri
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlin.math.abs
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -32,12 +33,12 @@ object PresetDataLauncher {
         courses: List<Course>,
         schedule: ScheduleConfig? = null
     ): String {
-        val timerConfig = buildTimerConfig(schedule)
+        val timerBuild = buildTimerConfig(schedule, courses)
         val payload = JSONObject().apply {
             put("isV2", true)
             put("t", System.currentTimeMillis().toString())
-            put("parserRes", JSONObject().put("courseInfos", buildCourseInfos(courses)))
-            put("timerRes", timerConfig)
+            put("parserRes", JSONObject().put("courseInfos", buildCourseInfos(timerBuild.courses)))
+            put("timerRes", timerBuild.timerConfig)
             put("schoolName", "")
             put("feedbackId", "preset_" + System.currentTimeMillis())
             put("id", "proj_" + System.currentTimeMillis())
@@ -47,6 +48,11 @@ object PresetDataLauncher {
             .put("importData", payload.toString())
             .toString()
     }
+
+    private data class TimerBuildResult(
+        val timerConfig: JSONObject,
+        val courses: List<Course>
+    )
 
     private fun buildCourseInfos(courses: List<Course>): JSONArray {
         return JSONArray().apply {
@@ -65,15 +71,18 @@ object PresetDataLauncher {
         }
     }
 
-    private fun buildTimerConfig(schedule: ScheduleConfig?): JSONObject {
+    private fun buildTimerConfig(schedule: ScheduleConfig?, courses: List<Course>): TimerBuildResult {
         val pendingConfig = parseJsonObject(HostCompat.pendingCourseConfigJson)
-        val pendingSections = parseJsonArray(HostCompat.pendingTimeSlotSectionsJson)
-        val scheduleSections = parseJsonArray(schedule?.sections)
-        val finalSections = when {
-            pendingSections != null && pendingSections.length() > 0 -> normalizeSections(pendingSections)
-            scheduleSections != null && scheduleSections.length() > 0 -> normalizeSections(scheduleSections)
-            else -> JSONArray()
-        }
+        val pendingCandidates = parseTimeSlotCandidates(HostCompat.pendingTimeSlotSectionsJson)
+        val scheduleCandidates = parseJsonArray(schedule?.sections)
+            ?.takeIf { it.length() > 0 }
+            ?.let { listOf(TimeSlotCandidate("schedule", emptyList(), normalizeSections(it))) }
+            .orEmpty()
+        val candidates = if (pendingCandidates.isNotEmpty()) pendingCandidates else scheduleCandidates
+        val baseSections = candidates.firstOrNull()?.sections ?: JSONArray()
+        val selectedCandidate = chooseBestTimeSlotCandidate(candidates, courses)
+        val resolved = resolveCustomTimeCourses(courses, selectedCandidate?.sections ?: baseSections)
+        val finalSections = resolved.sections
 
         val inferredCounts = inferSessionCounts(finalSections)
         val forenoon = schedule?.morningNum?.takeIf { it > 0 }
@@ -98,7 +107,7 @@ object PresetDataLauncher {
                 ?: pendingConfig?.opt("termStartDate")?.toString()
         )
 
-        return JSONObject().apply {
+        val timerConfig = JSONObject().apply {
             put("totalWeek", totalWeek)
             put("startSemester", startSemester)
             put("startWithSunday", pendingConfig?.optBoolean("startWithSunday") ?: false)
@@ -107,6 +116,169 @@ object PresetDataLauncher {
             put("afternoon", afternoon)
             put("night", night)
             put("sections", finalSections)
+        }
+        return TimerBuildResult(timerConfig = timerConfig, courses = resolved.courses)
+    }
+
+    private data class ResolvedCourseSections(
+        val sections: JSONArray,
+        val courses: List<Course>
+    )
+
+    private fun resolveCustomTimeCourses(courses: List<Course>, baseSections: JSONArray): ResolvedCourseSections {
+        val sections = JSONArray(baseSections.toString())
+
+        val resolvedCourses = courses.map { course ->
+            course.copyResolvedCourse().also { resolvedCourse ->
+                if (!course.isCustomTime || course.hasExplicitSectionRange) return@also
+
+                val start = course.customStartTime.trim()
+                val end = course.customEndTime.trim()
+                if (start.isEmpty() || end.isEmpty()) return@also
+
+                val mappedSections = findBestSectionRange(sections, start, end)
+                if (mappedSections.isNotEmpty()) {
+                    resolvedCourse.sections = mappedSections
+                }
+            }
+        }
+        return ResolvedCourseSections(sections = sections, courses = resolvedCourses)
+    }
+
+    private data class TimeSlotCandidate(
+        val name: String,
+        val buildings: List<String>,
+        val sections: JSONArray
+    )
+
+    private data class SectionRow(
+        val section: Int,
+        val startTime: String,
+        val endTime: String
+    )
+
+    private fun parseTimeSlotCandidates(raw: String?): List<TimeSlotCandidate> {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return emptyList()
+        return runCatching {
+            if (value.startsWith("[")) {
+                val sections = normalizeSections(JSONArray(value))
+                if (sections.length() == 0) emptyList()
+                else listOf(TimeSlotCandidate("default", emptyList(), sections))
+            } else {
+                val root = JSONObject(value)
+                val schedules = root.optJSONArray("schedules")
+                if (schedules != null && schedules.length() > 0) {
+                    buildList {
+                        for (i in 0 until schedules.length()) {
+                            val item = schedules.optJSONObject(i) ?: continue
+                            val sections = normalizeSections(item.optJSONArray("sections") ?: JSONArray())
+                            if (sections.length() == 0) continue
+                            add(
+                                TimeSlotCandidate(
+                                    name = item.optString("scheduleType", "schedule_$i"),
+                                    buildings = jsonArrayToStrings(item.optJSONArray("applicableBuildings")),
+                                    sections = sections
+                                )
+                            )
+                        }
+                    }
+                } else {
+                    emptyList()
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun chooseBestTimeSlotCandidate(
+        candidates: List<TimeSlotCandidate>,
+        courses: List<Course>
+    ): TimeSlotCandidate? {
+        if (candidates.isEmpty()) return null
+        val customCourses = courses.filter {
+            it.isCustomTime && !it.hasExplicitSectionRange &&
+                it.customStartTime.isNotBlank() && it.customEndTime.isNotBlank()
+        }
+        if (customCourses.isEmpty()) return candidates.first()
+
+        return candidates.maxByOrNull { candidate ->
+            customCourses.sumOf { course ->
+                val mapping = findBestSectionRange(candidate.sections, course.customStartTime, course.customEndTime)
+                val matchScore = if (mapping.isNotEmpty()) 1000 else 0
+                val buildingBoost = if (candidate.buildings.any { b -> course.position.contains(b, ignoreCase = true) }) 100 else 0
+                val distancePenalty = bestRangeDistance(candidate.sections, course.customStartTime, course.customEndTime)
+                matchScore + buildingBoost - distancePenalty
+            }
+        }
+    }
+
+    private fun findBestSectionRange(sections: JSONArray, start: String, end: String): String {
+        val rows = parseSectionRows(sections)
+        if (rows.isEmpty()) return ""
+
+        rows.firstOrNull { it.startTime == start && it.endTime == end }?.let {
+            return it.section.toString()
+        }
+
+        var bestScore = Int.MAX_VALUE
+        var bestRange: IntRange? = null
+        for (i in rows.indices) {
+            for (j in i until rows.size) {
+                if (j > i && rows[j].section != rows[j - 1].section + 1) break
+                val score = timeDistance(rows[i].startTime, start) + timeDistance(rows[j].endTime, end)
+                if (score < bestScore) {
+                    bestScore = score
+                    bestRange = rows[i].section..rows[j].section
+                }
+                if (rows[i].startTime == start && rows[j].endTime == end) {
+                    return (rows[i].section..rows[j].section).joinToString(",")
+                }
+            }
+        }
+        return bestRange?.joinToString(",").orEmpty()
+    }
+
+    private fun bestRangeDistance(sections: JSONArray, start: String, end: String): Int {
+        val rows = parseSectionRows(sections)
+        if (rows.isEmpty()) return Int.MAX_VALUE / 4
+        var best = Int.MAX_VALUE / 4
+        for (i in rows.indices) {
+            for (j in i until rows.size) {
+                if (j > i && rows[j].section != rows[j - 1].section + 1) break
+                best = minOf(best, timeDistance(rows[i].startTime, start) + timeDistance(rows[j].endTime, end))
+            }
+        }
+        return best
+    }
+
+    private fun parseSectionRows(sections: JSONArray): List<SectionRow> {
+        return buildList {
+            for (i in 0 until sections.length()) {
+                val obj = sections.optJSONObject(i) ?: continue
+                val section = obj.optInt("section", -1)
+                val start = obj.optString("startTime").trim()
+                val end = obj.optString("endTime").trim()
+                if (section > 0 && start.isNotEmpty() && end.isNotEmpty()) {
+                    add(SectionRow(section, start, end))
+                }
+            }
+        }.sortedBy { it.section }
+    }
+
+    private fun timeDistance(left: String, right: String): Int {
+        val leftMinutes = parseClockMinutes(left)
+        val rightMinutes = parseClockMinutes(right)
+        if (leftMinutes < 0 || rightMinutes < 0) return Int.MAX_VALUE / 8
+        return abs(leftMinutes - rightMinutes)
+    }
+
+    private fun jsonArrayToStrings(array: JSONArray?): List<String> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (i in 0 until array.length()) {
+                val value = array.optString(i).trim()
+                if (value.isNotEmpty()) add(value)
+            }
         }
     }
 
@@ -200,6 +372,21 @@ object PresetDataLauncher {
         val value = raw?.trim().orEmpty()
         if (value.isEmpty()) return null
         return runCatching { JSONArray(value) }.getOrNull()
+    }
+
+    private fun Course.copyResolvedCourse(): Course {
+        return Course().also { copy ->
+            copy.name = name
+            copy.teacher = teacher
+            copy.position = position
+            copy.day = day
+            copy.sections = sections
+            copy.weeks = weeks
+            copy.isCustomTime = isCustomTime
+            copy.customStartTime = customStartTime
+            copy.customEndTime = customEndTime
+            copy.hasExplicitSectionRange = hasExplicitSectionRange
+        }
     }
 
     private fun normalizeStartSemester(raw: String?): String {

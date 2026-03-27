@@ -7,6 +7,10 @@ public class Course {
     public int day;
     public String sections;
     public String weeks;
+    public boolean isCustomTime = false;
+    public String customStartTime = "";
+    public String customEndTime = "";
+    public boolean hasExplicitSectionRange = false;
 
     public boolean isInvalid = false;
     public boolean nameInvalid = false;

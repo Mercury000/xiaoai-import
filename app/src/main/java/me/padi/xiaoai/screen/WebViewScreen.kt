@@ -302,41 +302,110 @@ private fun calculatePresentWeek(rawStart: String, totalWeeks: Int): Int {
 
 private fun normalizeShiguangTimeSlots(timeSlotsJson: String): String {
     return try {
-        val src = JSONArray(timeSlotsJson)
-        val mapped = JSONArray()
-        for (i in 0 until src.length()) {
-            val node = src.optJSONObject(i) ?: continue
-            val number = when {
-                node.has("i") -> node.optInt("i", -1)
-                node.has("number") -> node.optInt("number", -1)
-                node.has("section") -> node.optInt("section", -1)
-                else -> -1
+        fun normalizeSectionArray(src: JSONArray): JSONArray {
+            val mapped = JSONArray()
+            for (i in 0 until src.length()) {
+                val node = src.optJSONObject(i) ?: continue
+                val number = when {
+                    node.has("i") -> node.optInt("i", -1)
+                    node.has("number") -> node.optInt("number", -1)
+                    node.has("section") -> node.optInt("section", -1)
+                    else -> -1
+                }
+                val start = when {
+                    node.has("s") -> node.optString("s")
+                    node.has("startTime") -> node.optString("startTime")
+                    node.has("start") -> node.optString("start")
+                    else -> ""
+                }
+                val end = when {
+                    node.has("e") -> node.optString("e")
+                    node.has("endTime") -> node.optString("endTime")
+                    node.has("end") -> node.optString("end")
+                    else -> ""
+                }
+                if (number > 0 && start.isNotBlank() && end.isNotBlank()) {
+                    mapped.put(
+                        JSONObject()
+                            .put("section", number)
+                            .put("startTime", start)
+                            .put("endTime", end)
+                    )
+                }
             }
-            val start = when {
-                node.has("s") -> node.optString("s")
-                node.has("startTime") -> node.optString("startTime")
-                node.has("start") -> node.optString("start")
-                else -> ""
-            }
-            val end = when {
-                node.has("e") -> node.optString("e")
-                node.has("endTime") -> node.optString("endTime")
-                node.has("end") -> node.optString("end")
-                else -> ""
-            }
-            if (number > 0 && start.isNotBlank() && end.isNotBlank()) {
-                mapped.put(
-                    JSONObject()
-                        .put("i", number)
-                        .put("s", start)
-                        .put("e", end)
-                )
+            return mapped
+        }
+
+        val raw = timeSlotsJson.trim()
+        if (raw.startsWith("[")) {
+            val mapped = normalizeSectionArray(JSONArray(raw))
+            if (mapped.length() > 0) mapped.toString() else timeSlotsJson
+        } else {
+            val src = JSONObject(raw)
+            val schedules = src.optJSONArray("schedules")
+            if (schedules != null && schedules.length() > 0) {
+                val mappedSchedules = JSONArray()
+                for (i in 0 until schedules.length()) {
+                    val schedule = schedules.optJSONObject(i) ?: continue
+                    val sections = normalizeSectionArray(schedule.optJSONArray("sections") ?: JSONArray())
+                    if (sections.length() == 0) continue
+                    mappedSchedules.put(
+                        JSONObject().apply {
+                            put("scheduleType", schedule.optString("scheduleType"))
+                            put("applicableBuildings", schedule.optJSONArray("applicableBuildings") ?: JSONArray())
+                            put("note", schedule.optString("note"))
+                            put("sections", sections)
+                        }
+                    )
+                }
+                if (mappedSchedules.length() > 0) {
+                    JSONObject().put("schedules", mappedSchedules).toString()
+                } else {
+                    timeSlotsJson
+                }
+            } else {
+                timeSlotsJson
             }
         }
-        if (mapped.length() > 0) mapped.toString() else timeSlotsJson
     } catch (_: Exception) {
         timeSlotsJson
     }
+}
+
+private fun joinSectionsFromRange(start: Int, end: Int): String {
+    if (start <= 0 || end <= 0) return ""
+    val from = minOf(start, end)
+    val to = maxOf(start, end)
+    return (from..to).joinToString(",")
+}
+
+private fun assignPreviewSection(
+    courseJson: JSONObject,
+    isCustomTime: Boolean,
+    fallbackSection: Int
+): Pair<String, Boolean> {
+    val sectionsArr = courseJson.optJSONArray("sections")
+    if (sectionsArr != null && sectionsArr.length() > 0) {
+        return buildString {
+            for (j in 0 until sectionsArr.length()) {
+                if (j > 0) append(",")
+                append(sectionsArr.getInt(j))
+            }
+        } to true
+    }
+
+    val start = courseJson.optInt("startSection", -1)
+    val end = courseJson.optInt("endSection", -1)
+    if (start > 0 && end > 0) {
+        return joinSectionsFromRange(start, end) to true
+    }
+
+    val sectionsText = courseJson.optString("sections", "").trim()
+    if (sectionsText.isNotBlank()) {
+        return sectionsText to !isCustomTime
+    }
+
+    return fallbackSection.toString() to false
 }
 
 class WebViewScreen : BaseActivity() {
@@ -506,6 +575,7 @@ private fun WebViewScreenContent(intent: Intent) {
                         }
 
                         val courses = mutableListOf<Course>()
+                        var previewCustomSection = 1000
                         for (i in 0 until coursesArray.length()) {
                             val courseJson = coursesArray.getJSONObject(i)
                             val c = Course()
@@ -515,24 +585,18 @@ private fun WebViewScreenContent(intent: Intent) {
                             c.day = courseJson.optInt("weekday", courseJson.optInt("day", 1))
                             
                             val isCustomTime = courseJson.optBoolean("isCustomTime", false)
-                            val sectionsArr = courseJson.optJSONArray("sections")
-                            c.sections = if (isCustomTime) {
-                                "1"
-                            } else if (sectionsArr != null) {
-                                buildString {
-                                    for (j in 0 until sectionsArr.length()) {
-                                        if (j > 0) append(",")
-                                        append(sectionsArr.getInt(j))
-                                    }
-                                }
-                            } else {
-                                val start = courseJson.optInt("startSection", -1)
-                                val end = courseJson.optInt("endSection", -1)
-                                if (start != -1 && end != -1) {
-                                    (start..end).joinToString(",")
-                                } else {
-                                    courseJson.optString("sections", "1,2").trim()
-                                }
+                            val (previewSections, explicitSectionRange) = assignPreviewSection(
+                                courseJson = courseJson,
+                                isCustomTime = isCustomTime,
+                                fallbackSection = previewCustomSection
+                            )
+                            c.sections = previewSections
+                            c.isCustomTime = isCustomTime
+                            c.customStartTime = courseJson.optString("customStartTime", "").trim()
+                            c.customEndTime = courseJson.optString("customEndTime", "").trim()
+                            c.hasExplicitSectionRange = explicitSectionRange
+                            if (isCustomTime && !explicitSectionRange) {
+                                previewCustomSection += 1
                             }
                             
                             val weeksArray = courseJson.optJSONArray("weeks")
