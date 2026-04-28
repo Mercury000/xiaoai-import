@@ -61,9 +61,7 @@ fun openWakeUpImportDialog(context: Context) {
                 WaitDialog.dismiss()
                 context.openCoursePreviewScreen(
                     courses = parsed.courses,
-                    schedule = ScheduleConfig().apply {
-                        sections = parsed.sections.toString()
-                    }
+                    schedule = null
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -183,10 +181,10 @@ private suspend fun parseWakeUpShare(input: String): WakeUpParseResult {
         val start = slot.optString("startTime").trim()
         val end = slot.optString("endTime").trim()
         if (node <= 0 || start == "00:00" || end == "00:00") continue
-        if (validNodes.isNotEmpty() && node !in validNodes) continue
+        if (node !in validNodes) continue
         sections.put(
             JSONObject()
-                .put("section", node)
+                .put("number", node)
                 .put("startTime", start)
                 .put("endTime", end)
         )
