@@ -83,6 +83,27 @@ object OkHttpClientManager {
             }
         })
     }
+
+    suspend fun postSync(url: String, json: String): String = suspendCancellableCoroutine { continuation ->
+        post(url, json, object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body.string()
+                    if (response.isSuccessful) {
+                        continuation.resume(body)
+                    } else {
+                        continuation.resumeWithException(IOException("HTTP ${response.code}: $body"))
+                    }
+                } catch (e: Exception) {
+                    continuation.resumeWithException(e)
+                }
+            }
+        })
+    }
 }
 
 inline fun OkHttpClientManager.get(

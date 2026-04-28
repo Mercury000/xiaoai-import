@@ -30,6 +30,7 @@ import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
 import com.mercury.xiaoaiimport.click.openAiImportScreen
 import com.mercury.xiaoaiimport.click.openJsonImportDialog
+import com.mercury.xiaoaiimport.click.openWakeUpImportDialog
 import com.mercury.xiaoaiimport.HostCompat
 import com.mercury.xiaoaiimport.OkHttpClientManager
 import com.mercury.xiaoaiimport.ShiguangAdapterEntry
@@ -328,6 +329,14 @@ class JwSystemScreen : BaseActivity() {
     private fun buildBuiltinImportItems(): List<JwItem> {
         return listOf(
             JwItem(
+                name = "WakeUp导入",
+                type = JwType.COMMON,
+                extra = "__wakeup_import__",
+                isCommon = true,
+                sortKey = "#",
+                order = 9_999
+            ),
+            JwItem(
                 name = "JSON导入",
                 type = JwType.COMMON,
                 extra = "__json_import__",
@@ -454,6 +463,10 @@ class JwSystemScreen : BaseActivity() {
     private fun handleItemClick(context: Context, item: JwItem) {
         when (item.type) {
             JwType.COMMON, JwType.SCHOOL -> {
+                if (item.extra == "__wakeup_import__") {
+                    openWakeUpImportDialog(context)
+                    return
+                }
                 if (item.extra == "__json_import__") {
                     openJsonImportDialog(context)
                     return
