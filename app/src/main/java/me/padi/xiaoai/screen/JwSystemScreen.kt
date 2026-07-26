@@ -95,13 +95,13 @@ class JwSystemScreen : BaseActivity() {
                             val ctx = LocalContext.current
                             SmallTopAppBar(
                                 title = "教务系统导入",
-                                horizontalPadding = 16.dp,
                                 actions = {
                                     TextButton(
                                         text = "关于",
                                         onClick = {
                                             ctx.startActivity(Intent(ctx, ModuleScreen::class.java))
-                                        }
+                                        },
+                                        modifier = Modifier.padding(end = 16.dp)
                                     )
                                 }
                             )
