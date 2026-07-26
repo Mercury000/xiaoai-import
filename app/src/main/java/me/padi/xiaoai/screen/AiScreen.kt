@@ -26,7 +26,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.mercury.xiaoaiimport.hook.HookEntry
 import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.HostCompat
 import org.json.JSONObject

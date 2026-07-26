@@ -54,7 +54,6 @@ import com.kevinnzou.web.rememberWebViewNavigator
 import com.kevinnzou.web.rememberWebViewState
 import com.mercury.xiaoaiimport.launchImportActivity
 import com.mercury.xiaoaiimport.click.openContributorQQ
-import com.mercury.xiaoaiimport.hook.HookEntry
 import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.ApiClient
 import com.mercury.xiaoaiimport.HostCompat

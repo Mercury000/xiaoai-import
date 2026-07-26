@@ -1,6 +1,7 @@
 package com.mercury.xiaoaiimport.screen
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.icu.text.Transliterator
 import android.os.Bundle
@@ -92,7 +93,19 @@ class JwSystemScreen : BaseActivity() {
                 Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
                         topBar = {
-                            SmallTopAppBar(title = "教务系统导入")
+                            val ctx = LocalContext.current
+                            SmallTopAppBar(
+                                title = "教务系统导入",
+                                actions = {
+                                    TextButton(
+                                        text = "关于",
+                                        onClick = {
+                                            ctx.startActivity(Intent(ctx, ModuleScreen::class.java))
+                                        },
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                }
+                            )
                         }
                     ) { paddingValues ->
                         JwSystemContent(paddingValues)

@@ -1,11 +1,11 @@
 package com.mercury.xiaoaiimport.application
 
+import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
-import com.highcapable.yukihookapi.hook.xposed.application.ModuleApplication
 import com.tencent.smtt.sdk.CookieManager
 import com.tencent.smtt.sdk.QbSdk
 
-class DefaultApplication : ModuleApplication() {
+class DefaultApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()

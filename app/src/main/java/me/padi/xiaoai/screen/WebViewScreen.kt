@@ -45,7 +45,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.mercury.xiaoaiimport.ApiClient
 import com.mercury.xiaoaiimport.HostCompat
 import com.mercury.xiaoaiimport.ParseResult
-import com.mercury.xiaoaiimport.hook.HookEntry
 import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.AlertDialogData
 import com.mercury.xiaoaiimport.AndroidBridge
@@ -430,8 +429,8 @@ private fun WebViewScreenContent(intent: Intent) {
 
     var webViewLoading by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var url by remember { mutableStateOf(intentUrl.ifBlank { HookEntry.prefs.getString("jw_webview_url", "") }) }
-    var desktopMode by remember { mutableStateOf(HookEntry.prefs.getBoolean("jw_webview_desktop_mode", false)) }
+    var url by remember { mutableStateOf(intentUrl.ifBlank { context.writablePrefs().getString("jw_webview_url", "") ?: "" }) }
+    var desktopMode by remember { mutableStateOf(context.writablePrefs().getBoolean("jw_webview_desktop_mode", false)) }
     var lastLoadedUrl by remember { mutableStateOf(url) }
     var importState by remember { mutableStateOf<ImportState>(ImportState.Idle) }
     val currentImportState by rememberUpdatedState(importState)

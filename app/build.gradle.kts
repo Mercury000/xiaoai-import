@@ -185,11 +185,6 @@ android {
         "--allow-reserved-package-id", "--package-id", "0xf4"
     )
 
-    packaging {
-        resources {
-            merges += "META-INF/xposed/*"
-        }
-    }
 }
 
 androidComponents {
@@ -242,13 +237,6 @@ tasks.named("preBuild") {
 }
 
 dependencies {
-    compileOnly(libs.rovo89.xposed.api)
-    ksp(libs.yukihookapi.ksp.xposed)
-    implementation(libs.yukihookapi)
-
-    implementation(libs.kavaref.core)
-    implementation(libs.kavaref.extension)
-
     ksp(libs.hikage.compiler)
     implementation(libs.hikage.core)
     implementation(libs.hikage.extension)

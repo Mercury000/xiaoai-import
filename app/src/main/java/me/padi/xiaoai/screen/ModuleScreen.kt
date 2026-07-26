@@ -47,7 +47,6 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.click.openContributorQQ
-import com.mercury.xiaoaiimport.hook.HookEntry
 import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.HostCompat
 import org.json.JSONObject
@@ -111,9 +110,9 @@ class ModuleScreen : BaseActivity() {
                 var showShiguangSourceSheet = remember { mutableStateOf(false) }
                 var showReferencesSheet = remember { mutableStateOf(false) }
 
-                var url by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_url", "")) }
-                var javaScriptStr by remember { mutableStateOf<String>(HookEntry.prefs.getString("debug_jw_script", "")) }
                 val context = LocalContext.current
+                var url by remember { mutableStateOf<String>(context.writablePrefs().getString("debug_jw_url", "") ?: "") }
+                var javaScriptStr by remember { mutableStateOf<String>(context.writablePrefs().getString("debug_jw_script", "") ?: "") }
                 var shiguangRepoUrl by remember {
                     mutableStateOf(HostCompat.getShiguangRepoUrl(context))
                 }
