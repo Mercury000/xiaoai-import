@@ -38,7 +38,6 @@ import com.mercury.xiaoaiimport.ShiguangAdapterEntry
 import com.mercury.xiaoaiimport.get
 import com.mercury.xiaoaiimport.launchImportActivity
 import com.mercury.xiaoaiimport.parseShiguangSchoolIndexPb
-import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.*

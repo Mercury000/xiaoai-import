@@ -62,7 +62,6 @@ import com.mercury.xiaoaiimport.openCoursePreviewScreen
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.ShiguangAdapterEntry
 import com.mercury.xiaoaiimport.parseShiguangSchoolIndexPb
-import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card

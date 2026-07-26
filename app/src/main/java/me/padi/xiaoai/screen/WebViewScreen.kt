@@ -56,7 +56,6 @@ import com.mercury.xiaoaiimport.openCoursePreviewScreen
 import com.mercury.xiaoaiimport.ScheduleConfig
 import org.json.JSONArray
 import org.json.JSONObject
-import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card

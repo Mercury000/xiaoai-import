@@ -50,7 +50,6 @@ import com.mercury.xiaoaiimport.click.openContributorQQ
 import com.mercury.xiaoaiimport.writablePrefs
 import com.mercury.xiaoaiimport.HostCompat
 import org.json.JSONObject
-import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults

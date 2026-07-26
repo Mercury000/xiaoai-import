@@ -263,10 +263,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
 
-    implementation("com.github.suzhelan:XpHelper:3.0") {
-        exclude(group = "org.luckypray", module = "dexkit")
-    }
-
     implementation("top.yukonga.miuix.kmp:miuix-android:0.8.0")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.8.0")
 

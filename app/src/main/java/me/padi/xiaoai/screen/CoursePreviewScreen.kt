@@ -42,7 +42,6 @@ import com.mercury.xiaoaiimport.PresetDataLauncher
 import com.mercury.xiaoaiimport.R
 import com.mercury.xiaoaiimport.readPreviewCourses
 import com.mercury.xiaoaiimport.readPreviewSchedule
-import top.sacz.xphelper.activity.BaseActivity
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
