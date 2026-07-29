@@ -9,7 +9,7 @@
         android:name=".application.DefaultApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="课表修复-R"
+        android:label="课表修复"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppDefault"
@@ -25,7 +25,7 @@
         <activity
             android:name=".screen.JwSystemScreen"
             android:exported="true"
-            android:label="课表修复-R"
+            android:label="课表修复"
             android:screenOrientation="portrait">
 
             <intent-filter>

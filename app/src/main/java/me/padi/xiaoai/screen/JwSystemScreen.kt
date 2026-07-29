@@ -31,7 +31,6 @@ import com.kongzue.dialogx.dialogs.TipDialog
 import com.kongzue.dialogx.dialogs.WaitDialog
 import com.mercury.xiaoaiimport.click.openAiImportScreen
 import com.mercury.xiaoaiimport.click.openJsonImportDialog
-import com.mercury.xiaoaiimport.click.openWakeUpImportDialog
 import com.mercury.xiaoaiimport.HostCompat
 import com.mercury.xiaoaiimport.OkHttpClientManager
 import com.mercury.xiaoaiimport.ShiguangAdapterEntry
@@ -42,6 +41,7 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.*
 import org.json.JSONArray
+import org.json.JSONObject
 import java.util.*
 
 enum class JwType {
@@ -59,6 +59,56 @@ data class JwItem(
     val adapters: List<ShiguangAdapterEntry> = emptyList()
 )
 
+private fun ShiguangAdapterEntry.toJson(): JSONObject = JSONObject().apply {
+    put("adapterId", adapterId)
+    put("adapterName", adapterName)
+    put("importType", importType)
+    put("assetJsPath", assetJsPath)
+    put("importUrl", importUrl)
+    put("description", description)
+    put("maintainer", maintainer)
+}
+
+private fun JSONObject.toShiguangAdapterEntry(): ShiguangAdapterEntry = ShiguangAdapterEntry(
+    adapterId = optString("adapterId"),
+    adapterName = optString("adapterName"),
+    importType = optInt("importType", 0),
+    assetJsPath = optString("assetJsPath"),
+    importUrl = optString("importUrl"),
+    description = optString("description"),
+    maintainer = optString("maintainer")
+)
+
+private fun JwItem.toJson(): JSONObject = JSONObject().apply {
+    put("name", name)
+    put("type", type.name)
+    put("url", url)
+    put("extra", extra)
+    put("isCommon", isCommon)
+    put("sortKey", sortKey)
+    put("order", order)
+    put("adapters", JSONArray().apply { adapters.forEach { put(it.toJson()) } })
+}
+
+private fun JSONObject.toJwItem(): JwItem {
+    val adapters = mutableListOf<ShiguangAdapterEntry>()
+    optJSONArray("adapters")?.let { arr ->
+        for (i in 0 until arr.length()) {
+            arr.optJSONObject(i)?.toShiguangAdapterEntry()?.let { adapters.add(it) }
+        }
+    }
+    return JwItem(
+        name = optString("name"),
+        type = runCatching { JwType.valueOf(optString("type")) }.getOrDefault(JwType.COMMON),
+        url = optString("url"),
+        extra = optString("extra"),
+        isCommon = optBoolean("isCommon"),
+        sortKey = optString("sortKey", "#"),
+        order = optInt("order", 0),
+        adapters = adapters
+    )
+}
+
 class JwSystemScreen : BaseActivity() {
     private val allItems = mutableStateListOf<JwItem>()
     private var isLoading by mutableStateOf(false)
@@ -73,17 +123,24 @@ class JwSystemScreen : BaseActivity() {
         private const val KEY_COMMON   = "cache_common"
         private const val KEY_SCHOOLS  = "cache_schools"
         private const val KEY_SHIGUANG_SOURCE = "cache_shiguang_pb_source"
+        private const val KEY_ITEMS_CACHE = "cache_items_json"
         private const val URL_COMMON   = "https://gitee.com/padi/aishedule/raw/master/system.json"
         private const val URL_SCHOOLS  = "https://gitee.com/padi/aishedule/raw/master/school.json"
 
         // 白名单：用于清理 SharedPreferences 中残留的废弃键
-        private val VALID_KEYS = setOf(KEY_COMMON, KEY_SCHOOLS, KEY_SHIGUANG_SOURCE)
+        private val VALID_KEYS = setOf(KEY_COMMON, KEY_SCHOOLS, KEY_SHIGUANG_SOURCE, KEY_ITEMS_CACHE)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         enableEdgeToEdge()
+        // 先从缓存恢复列表，避免进入首页空白等待
+        val cachedItems = loadCachedItems()
+        if (cachedItems.isNotEmpty()) {
+            allItems.clear()
+            allItems.addAll(cachedItems)
+        }
         fetchData(forceRefresh = false)
         setContent {
             MiuixTheme {
@@ -195,8 +252,32 @@ class JwSystemScreen : BaseActivity() {
         }
     }
 
+    /** 将首页列表整体缓存为 JSON，下次进入首页直接显示，无需等待网络 */
+    private fun saveCachedItems(items: List<JwItem>) {
+        val arr = JSONArray()
+        items.forEach { arr.put(it.toJson()) }
+        getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_ITEMS_CACHE, arr.toString())
+            .apply()
+    }
+
+    private fun loadCachedItems(): List<JwItem> {
+        val raw = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_ITEMS_CACHE, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    arr.optJSONObject(i)?.toJwItem()?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
     internal fun fetchData(forceRefresh: Boolean = false) {
-        isLoading = true
+        // 强制刷新或无缓存数据时显示 loading；有缓存时静默后台刷新
+        if (forceRefresh || allItems.isEmpty()) isLoading = true
         val prefs: SharedPreferences = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
         // 移除不在白名单中的旧键
@@ -230,6 +311,7 @@ class JwSystemScreen : BaseActivity() {
                 withContext(Dispatchers.Main) {
                     allItems.clear()
                     allItems.addAll(sorted)
+                    saveCachedItems(sorted)
                     isLoading = false
                 }
             } catch (e: Exception) {
@@ -340,14 +422,6 @@ class JwSystemScreen : BaseActivity() {
 
     private fun buildBuiltinImportItems(): List<JwItem> {
         return listOf(
-            JwItem(
-                name = "WakeUp导入",
-                type = JwType.COMMON,
-                extra = "__wakeup_import__",
-                isCommon = true,
-                sortKey = "#",
-                order = 9_999
-            ),
             JwItem(
                 name = "JSON导入",
                 type = JwType.COMMON,
@@ -475,10 +549,6 @@ class JwSystemScreen : BaseActivity() {
     private fun handleItemClick(context: Context, item: JwItem) {
         when (item.type) {
             JwType.COMMON, JwType.SCHOOL -> {
-                if (item.extra == "__wakeup_import__") {
-                    openWakeUpImportDialog(context)
-                    return
-                }
                 if (item.extra == "__json_import__") {
                     openJsonImportDialog(context)
                     return

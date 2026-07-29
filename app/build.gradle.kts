@@ -116,7 +116,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = gropify.project.app.packageName
+        applicationId = "com.mercury.xiaoaiimportn"
         minSdk = gropify.project.android.minSdk
         targetSdk = gropify.project.android.targetSdk
         versionName = activeVersion.name

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">课表修复-R</string>
+    <string name="app_name">课表修复</string>
     <string name="xposed_desc">这是一个小爱课程表修复模块</string>
     <string name="about_module">This Xposed Module is made by YukiHookAPI. \nLearn more https://github.com/HighCapable/YuKiHookAPI</string>
     <string name="about_module_extension">This Xposed Module is powered by KavaRef.\nLearn more https://github.com/HighCapable/KavaRef</string>
