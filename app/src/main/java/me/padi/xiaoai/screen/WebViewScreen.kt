@@ -113,6 +113,13 @@ private val BRIDGE_GLUE_JS = """
        console.log('Bridge Glue: Already exists, skipping.');
        return;
     }
+
+    // 新名称优先；旧名称和 app 仅作为过渡期回退。
+    var nativeBridge = window.shiguangBridge || window.AndroidBridge || window.app;
+    if (!nativeBridge) {
+       throw new Error('Native bridge is unavailable');
+    }
+
     window._bridgeInjected = true;
     var reg={};
     window._resolveAndroidPromise=function(id,r){
@@ -124,51 +131,76 @@ private val BRIDGE_GLUE_JS = """
        var p=reg[id];if(p){delete reg[id];p[1](new Error(e));}
     };
     function mkp(fn){return new Promise(function(res,rej){var id='_bp'+Date.now()+Math.random().toString(36).slice(2);reg[id]=[res,rej];fn(id);});}
-    function sarg(a){ return typeof a === 'string' ? a : JSON.stringify(a); }
-    window.app = window.app || {};
-    window.app.showAlert = function(t,c,b){ 
-        console.log('Sync Bridge: showAlert called'); 
-        if (arguments.length === 1) return AndroidBridge.showAlert(sarg(t));
-        if (arguments.length === 2) return AndroidBridge.showAlert(sarg(t), sarg(c));
-        return AndroidBridge.showAlert(sarg(t), sarg(c), sarg(b || '确定')); 
-    };
-    window.app.showPrompt = function(t,p,d,v){ 
-        console.log('Sync Bridge: showPrompt called'); 
-        if (arguments.length === 1) return AndroidBridge.showPrompt(sarg(t), "");
-        if (arguments.length === 2) return AndroidBridge.showPrompt(sarg(t), sarg(p));
-        if (arguments.length === 3) return AndroidBridge.showPrompt(sarg(t), sarg(p), sarg(d));
-        return AndroidBridge.showPrompt(sarg(t), sarg(p), sarg(d || ''), sarg(v || '')); 
-    };
-    window.app.showSingleSelection = function(t,i,d){ 
-        console.log('Sync Bridge: showSingleSelection called'); 
-        if (arguments.length === 1) return AndroidBridge.showSingleSelection(sarg(t), "[]");
-        if (arguments.length === 2) return AndroidBridge.showSingleSelection(sarg(t), sarg(i));
-        return AndroidBridge.showSingleSelection(sarg(t), sarg(i), d != null ? d : -1); 
-    };
-    window.app.saveImportedCourses = function(j){ return AndroidBridge.saveImportedCourses(sarg(j)); };
-    window.app.saveCourseConfig = function(j){ return AndroidBridge.saveCourseConfig(sarg(j)); };
-    window.app.savePresetTimeSlots = function(j){ return AndroidBridge.savePresetTimeSlots(sarg(j)); };
-    window.app.postData = function(m){ return AndroidBridge.postData(sarg(m)); };
-    window.app.reportError = function(e){ return AndroidBridge.reportError(sarg(e)); };
-    window.app.notifyTaskCompleted = function(){ AndroidBridge.notifyTaskCompletion(); };
-    window.app.notifyTaskCompletion = function(){ AndroidBridge.notifyTaskCompletion(); };
-    window.app.postHtml = function(h){ AndroidBridge.postHtml(sarg(h)); };
-    window.app.closeWebView = function(){ AndroidBridge.closeWebView(); };
-    window.app.close = window.app.closeWebView;
-    
-    window.AndroidBridge = window.app; // 淇濊瘉 window.AndroidBridge 涔熸湁鐩稿悓鍒悕
-    window.AndroidBridgePromise = {
-      showAlert:function(t,c,b){ return mkp(function(id){AndroidBridge.showAlertAsync(sarg(t),sarg(c),sarg(b),id);});},
-      showPrompt:function(t,p,d,v){ return mkp(function(id){AndroidBridge.showPromptAsync(sarg(t),sarg(p),sarg(d||''),sarg(v||''),id);});},
-      showSingleSelection:function(t,i,d){ return mkp(function(id){AndroidBridge.showSingleSelectionAsync(sarg(t),sarg(i),d!=null?d:-1,id);});},
-      saveImportedCourses:function(j){ return mkp(function(id){AndroidBridge.saveImportedCourses(sarg(j),id);});},
-      saveCourseConfig:function(j){ return mkp(function(id){AndroidBridge.saveCourseConfig(sarg(j),id);});},
-      savePresetTimeSlots:function(j){ return mkp(function(id){AndroidBridge.savePresetTimeSlots(sarg(j),id);});},
-      notifyTaskCompleted:function(){ AndroidBridge.notifyTaskCompletion(); },
-      notifyTaskCompletion:function(){ AndroidBridge.notifyTaskCompletion(); }
-    };
+    function sarg(a){
+       if (typeof a === 'string') return a;
+       if (typeof a === 'function') return a.toString();
+       var encoded = JSON.stringify(a);
+       return typeof encoded === 'undefined' ? (a == null ? '' : String(a)) : encoded;
+    }
 
-    console.log('Bridge Glue: Injected successfully (Ultimate Hybrid Mode).');
+    // 对外统一暴露新的 shiguangBridge；AndroidBridge/app 保留为同一 API 的兼容别名。
+    var bridgeApi = {};
+    bridgeApi.showToast = function(m){ return nativeBridge.showToast(sarg(m)); };
+    bridgeApi.showAlert = function(t,c,b){
+        console.log('Sync Bridge: showAlert called');
+        if (arguments.length === 1) return nativeBridge.showAlert(sarg(t));
+        if (arguments.length === 2) return nativeBridge.showAlert(sarg(t), sarg(c));
+        return nativeBridge.showAlert(sarg(t), sarg(c), sarg(b == null ? '确定' : b));
+    };
+    bridgeApi.showPrompt = function(t,p,d,v){
+        console.log('Sync Bridge: showPrompt called');
+        if (arguments.length === 1) return nativeBridge.showPrompt(sarg(t), '');
+        if (arguments.length === 2) return nativeBridge.showPrompt(sarg(t), sarg(p));
+        if (arguments.length === 3) return nativeBridge.showPrompt(sarg(t), sarg(p), sarg(d));
+        return nativeBridge.showPrompt(sarg(t), sarg(p), sarg(d == null ? '' : d), sarg(v == null ? '' : v));
+    };
+    bridgeApi.showSingleSelection = function(t,i,d){
+        console.log('Sync Bridge: showSingleSelection called');
+        if (arguments.length === 1) return nativeBridge.showSingleSelection(sarg(t), '[]');
+        if (arguments.length === 2) return nativeBridge.showSingleSelection(sarg(t), sarg(i));
+        return nativeBridge.showSingleSelection(sarg(t), sarg(i), d != null ? d : -1);
+    };
+    bridgeApi.showAlertAsync = function(t,c,b,id){ return nativeBridge.showAlertAsync(sarg(t),sarg(c),sarg(b),sarg(id)); };
+    bridgeApi.showPromptAsync = function(t,p,d,v,id){ return nativeBridge.showPromptAsync(sarg(t),sarg(p),sarg(d),sarg(v),sarg(id)); };
+    bridgeApi.showSingleSelectionAsync = function(t,i,d,id){ return nativeBridge.showSingleSelectionAsync(sarg(t),sarg(i),d!=null?d:-1,sarg(id)); };
+    bridgeApi.saveImportedCourses = function(j,id){
+        if (arguments.length > 1) return nativeBridge.saveImportedCourses(sarg(j),sarg(id));
+        return nativeBridge.saveImportedCourses(sarg(j));
+    };
+    bridgeApi.saveCourseConfig = function(j,id){
+        if (arguments.length > 1) return nativeBridge.saveCourseConfig(sarg(j),sarg(id));
+        return nativeBridge.saveCourseConfig(sarg(j));
+    };
+    bridgeApi.savePresetTimeSlots = function(j,id){
+        if (arguments.length > 1) return nativeBridge.savePresetTimeSlots(sarg(j),sarg(id));
+        return nativeBridge.savePresetTimeSlots(sarg(j));
+    };
+    bridgeApi.postData = function(m){ return nativeBridge.postData(sarg(m)); };
+    bridgeApi.reportError = function(e){ return nativeBridge.reportError(sarg(e)); };
+    bridgeApi.notifyTaskCompleted = function(){ return nativeBridge.notifyTaskCompletion(); };
+    bridgeApi.notifyTaskCompletion = function(){ return nativeBridge.notifyTaskCompletion(); };
+    bridgeApi.postHtml = function(h){ return nativeBridge.postHtml(sarg(h)); };
+    bridgeApi.closeWebView = function(){ return nativeBridge.closeWebView(); };
+    bridgeApi.close = bridgeApi.closeWebView;
+
+    window.shiguangBridge = bridgeApi;
+    window.app = bridgeApi;
+    window.AndroidBridge = bridgeApi;
+
+    var promiseBridge = {
+      showAlert:function(t,c,b){ return mkp(function(id){nativeBridge.showAlertAsync(sarg(t),sarg(c == null ? '' : c),sarg(b == null ? '确定' : b),id);});},
+      showPrompt:function(t,p,d,v){ return mkp(function(id){nativeBridge.showPromptAsync(sarg(t),sarg(p),sarg(d == null ? '' : d),sarg(v == null ? '' : v),id);});},
+      showSingleSelection:function(t,i,d){ return mkp(function(id){nativeBridge.showSingleSelectionAsync(sarg(t),sarg(i),d!=null?d:-1,id);});},
+      saveImportedCourses:function(j){ return mkp(function(id){nativeBridge.saveImportedCourses(sarg(j),id);});},
+      saveCourseConfig:function(j){ return mkp(function(id){nativeBridge.saveCourseConfig(sarg(j),id);});},
+      savePresetTimeSlots:function(j){ return mkp(function(id){nativeBridge.savePresetTimeSlots(sarg(j),id);});},
+      notifyTaskCompleted:function(){ return nativeBridge.notifyTaskCompletion(); },
+      notifyTaskCompletion:function(){ return nativeBridge.notifyTaskCompletion(); }
+    };
+    window.shiguangBridgePromise = promiseBridge;
+    window.AndroidBridgePromise = promiseBridge;
+
+    console.log('Bridge Glue: Injected successfully (shiguangBridge primary, AndroidBridge compatible).');
   } catch(e) { console.error('Bridge Glue: Error during injection', e); }
 })();
 """.trimIndent()
@@ -849,6 +881,8 @@ private fun WebViewScreenContent(intent: Intent) {
                             }
 
                             val bridge = AndroidBridge(context, this, bridgeCallback)
+                            // 拾光新脚本优先使用 shiguangBridge；旧适配继续兼容 AndroidBridge/app。
+                            addJavascriptInterface(bridge, "shiguangBridge")
                             addJavascriptInterface(bridge, "AndroidBridge")
                             addJavascriptInterface(bridge, "app")
 
