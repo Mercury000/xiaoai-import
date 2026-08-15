@@ -982,7 +982,10 @@ private fun WebViewScreenContent(intent: Intent) {
                                             } catch(e) {
                                                 console.error('WrappedScript: Execution Error:', e);
                                                 if (window.app && window.app.reportError) window.app.reportError(e.message || e.toString());
-                                                AndroidBridge.notifyTaskCompletion();
+                                                var completionBridge = window.shiguangBridge || window.AndroidBridge || window.app;
+                                                if (completionBridge && completionBridge.notifyTaskCompletion) {
+                                                    completionBridge.notifyTaskCompletion();
+                                                }
                                                 return "Error";
                                             }
                                         })();
@@ -1071,7 +1074,11 @@ private fun WebViewScreenContent(intent: Intent) {
                                                 }
                                                 html = textPayload;
                                             }
-                                            AndroidBridge.postHtml(html);
+                                            var htmlBridge = window.shiguangBridge || window.AndroidBridge || window.app;
+                                            if (!htmlBridge || !htmlBridge.postHtml) {
+                                                throw new Error('Native bridge is unavailable');
+                                            }
+                                            htmlBridge.postHtml(html);
                                             return "Extraction Process Started";
                                         } catch(e) {
                                             console.error('Extraction Failed:', e);
